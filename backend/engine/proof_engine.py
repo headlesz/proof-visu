@@ -114,6 +114,7 @@ class ProofEngine:
 
         try:
             new_goal_ids = rule.apply(self.state, goal, apply_params)
+            self._dedupe_all_goal_assumptions()
             if elim_source is not None:
                 marker = self._elim_marker(rule_name, elim_source)
                 self._record_manual_elim_marker(goal_id, marker, new_goal_ids)
@@ -211,7 +212,10 @@ class ProofEngine:
         if goal.is_proven:
             return {"success": True, "hint": "This goal is already proven."}
 
-        applicable = get_applicable_rules(self.state, goal)
+        applicable = [
+            r for r in get_applicable_rules(self.state, goal)
+            if not self._is_manual_redundant_elim(goal, r.name)
+        ]
         if not applicable:
             return {"success": True, "hint": "No applicable rules found. Try adding premises or using a different approach."}
 
@@ -332,7 +336,8 @@ class ProofEngine:
         self._failed_goal_depth: Dict[str, int] = {}
 
         snapshot = self.state._snapshot()
-        if self._solve_all_goals(100):
+        search_depth = max(1, max_steps)
+        if self._solve_all_goals(search_depth):
             return {
                 "success": True,
                 "is_complete": True,
@@ -600,6 +605,7 @@ class ProofEngine:
         try:
             goal = self.state.goals[goal_id]
             rule.apply(self.state, goal, params)
+            self._dedupe_all_goal_assumptions()
             self._solve_steps += 1
 
             if self._solve_all_goals(depth - 1):
@@ -674,6 +680,11 @@ class ProofEngine:
             return left_goal not in assumption_strs and right_goal not in assumption_strs
 
         return False
+
+    def _dedupe_all_goal_assumptions(self):
+        """Normalize assumptions after each rule application."""
+        for g in self.state.goals.values():
+            g.assumptions = self.state.dedupe_assumptions(g.assumptions)
 
     def export_json(self) -> dict:
         """Export the proof as JSON."""

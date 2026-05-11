@@ -135,6 +135,19 @@ class ProofState:
         self._fresh_var_counter += 1
         return f"{base}_{self._fresh_var_counter}"
 
+    @staticmethod
+    def dedupe_assumptions(assumptions: List[ASTNode]) -> List[ASTNode]:
+        """Deduplicate assumptions by structural string, preserving first-seen order."""
+        seen = set()
+        deduped: List[ASTNode] = []
+        for a in assumptions or []:
+            sig = str(a)
+            if sig in seen:
+                continue
+            seen.add(sig)
+            deduped.append(a)
+        return deduped
+
     def add_goal(self, formula: ASTNode, assumptions: List[ASTNode] = None,
                  parent_id: str = None, label: str = "") -> GoalNode:
         """Add a new goal to the proof."""
@@ -145,7 +158,7 @@ class ProofState:
         node = GoalNode(
             id=gid,
             formula=formula,
-            assumptions=assumptions or [],
+            assumptions=self.dedupe_assumptions(assumptions or []),
             parent_id=parent_id,
             manual_elim_history=inherited_manual_history,
             label=label,
@@ -172,7 +185,7 @@ class ProofState:
         self.premises.append(formula)
         for goal in self.goals.values():
             if not goal.is_proven:
-                goal.assumptions.append(formula)
+                goal.assumptions = self.dedupe_assumptions(list(goal.assumptions) + [formula])
 
     def mark_proven(self, goal_id: str, rule: str = ""):
         """Mark a goal as proven."""
