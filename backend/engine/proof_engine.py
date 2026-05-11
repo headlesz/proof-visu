@@ -228,7 +228,12 @@ class ProofEngine:
         self.state.save_checkpoint()
         self._solve_steps = 0
         self._solve_max = max_steps
-        self._seen_set = set()
+        # Memoize abstract frontier states so we do not re-explore the same
+        # proof-search state at an equal-or-worse remaining depth.
+        self._state_depth_seen: Dict[tuple, int] = {}
+        # Memoize failed local subgoals. If a goal signature cannot be solved
+        # at depth D, it cannot be solved at any depth <= D.
+        self._failed_goal_depth: Dict[str, int] = {}
 
         snapshot = self.state._snapshot()
         if self._solve_all_goals(100):
@@ -261,9 +266,17 @@ class ProofEngine:
         if not open_goals:
             return self.state.is_complete()
 
-        # Pick the newest open goal (depth-first): finish one branch
-        # before starting another, avoiding interleaving that wastes depth.
-        goal_id = open_goals[-1].id
+        state_sig = self._state_sig()
+        seen_depth = self._state_depth_seen.get(state_sig, -1)
+        if seen_depth >= depth:
+            return False
+        self._state_depth_seen[state_sig] = depth
+
+        # Prefer goals that can close immediately, then structurally simpler
+        # goals. This avoids repeatedly deepening into hard branches while an
+        # easy assumption-close goal is available.
+        open_goals.sort(key=self._goal_priority)
+        goal_id = open_goals[0].id
         return self._solve_goal(goal_id, depth)
 
     def _solve_goal(self, goal_id: str, depth: int) -> bool:
@@ -275,7 +288,22 @@ class ProofEngine:
         if not goal or goal.is_proven:
             return self._solve_all_goals(depth)
 
-        return self._try_solve_goal(goal_id, goal, depth)
+        sig = self._goal_sig(goal)
+        seen_fail_depth = self._failed_goal_depth.get(sig, -1)
+        if seen_fail_depth >= depth:
+            return False
+
+        # If a descendant goal repeats an ancestor goal's abstract state, we
+        # are in a branch-local cycle (typically from elim/intros ping-pong).
+        if self._repeats_ancestor_state(goal):
+            return False
+
+        solved = self._try_solve_goal(goal_id, goal, depth)
+        if not solved:
+            prev = self._failed_goal_depth.get(sig, -1)
+            if depth > prev:
+                self._failed_goal_depth[sig] = depth
+        return solved
 
     def _try_solve_goal(self, goal_id: str, goal, depth: int) -> bool:
         """Core goal-directed solving logic.
@@ -320,13 +348,21 @@ class ProofEngine:
             if self._try_rule(rule_name, goal_id, depth):
                 return True
 
+        branching = [r for r in elim_rules if r in ('union_elim', 'or_elim')]
+
+        # For disjunction-style goals without an immediate witness for either
+        # intro branch, case-splitting first is usually more productive.
+        if self._prefer_branching_before_intro(goal, structural, assumption_strs):
+            for rule_name in branching:
+                if self._try_rule(rule_name, goal_id, depth):
+                    return True
+
         # Phase 4: Try structural choice rules (union_intro, or_intro)
         for rule_name in structural:
             if self._try_rule(rule_name, goal_id, depth):
                 return True
 
-        # Phase 5: Try branching elim rules (union_elim, or_elim) as last resort
-        branching = [r for r in elim_rules if r in ('union_elim', 'or_elim')]
+        # Phase 5: Try branching elim rules (union_elim, or_elim) as fallback
         for rule_name in branching:
             if self._try_rule(rule_name, goal_id, depth):
                 return True
@@ -447,7 +483,8 @@ class ProofEngine:
         # The union assumption is about the same element as the goal — useful
         return True
 
-    def _try_rule(self, rule_name: str, goal_id: str, depth: int) -> bool:
+    def _try_rule(self, rule_name: str, goal_id: str, depth: int,
+                  params: Dict = None) -> bool:
         """Try applying a rule; if it succeeds and all goals solve, return True.
         Otherwise backtrack."""
         rule = RULES_BY_NAME.get(rule_name)
@@ -458,23 +495,15 @@ class ProofEngine:
         if not goal or goal.is_proven:
             return self._solve_all_goals(depth)
 
-        if not rule.is_applicable(self.state, goal):
+        if not rule.is_applicable(self.state, goal, params):
             return False
-
-        # Path-based cycle detection: avoid re-applying the same rule on
-        # the same goal-state. This prevents loops like union_elim removing
-        # an assumption that intersect_elim re-adds.
-        sig = (rule_name, self._goal_sig(goal))
-        if sig in self._seen_set:
-            return False
-        self._seen_set.add(sig)
 
         snapshot = self.state._snapshot()
         old_steps = self._solve_steps
 
         try:
             goal = self.state.goals[goal_id]
-            rule.apply(self.state, goal)
+            rule.apply(self.state, goal, params)
             self._solve_steps += 1
 
             if self._solve_all_goals(depth - 1):
@@ -487,12 +516,68 @@ class ProofEngine:
             self.state._restore(snapshot)
             self._solve_steps = old_steps
             return False
-        finally:
-            self._seen_set.discard(sig)
 
     def _goal_sig(self, goal) -> str:
         """Signature for a single goal (formula + deduplicated assumptions)."""
-        return str(goal.formula) + '||' + str(tuple(sorted(set(str(a) for a in goal.assumptions))))
+        return self._goal_sig_parts(goal.formula, goal.assumptions)
+
+    def _goal_sig_parts(self, formula, assumptions) -> str:
+        assumption_sig = tuple(sorted(set(str(a) for a in assumptions)))
+        return str(formula) + '||' + str(assumption_sig)
+
+    def _state_sig(self) -> tuple:
+        """Canonical signature for the current frontier of open goals."""
+        return tuple(sorted(self._goal_sig(g) for g in self.state.open_goals()))
+
+    def _repeats_ancestor_state(self, goal: GoalNode) -> bool:
+        """Check whether this goal repeats an ancestor's abstract state."""
+        sig = self._goal_sig(goal)
+        parent_id = goal.parent_id
+        while parent_id:
+            parent = self.state.goals.get(parent_id)
+            if not parent:
+                break
+            if self._goal_sig(parent) == sig:
+                return True
+            parent_id = parent.parent_id
+        return False
+
+    def _goal_priority(self, goal: GoalNode) -> tuple:
+        """Ordering heuristic for which open goal to solve next."""
+        assumption_strs = set(str(a) for a in goal.assumptions)
+        closes_by_assumption = str(goal.formula) in assumption_strs
+        structural = self._structural_rules(goal.formula, goal)
+        deterministic = {'and_intro', 'implies_intro', 'not_intro', 'iff_intro',
+                         'forall_intro', 'exists_intro', 'equality_intro',
+                         'subset_intro', 'intersect_intro'}
+        has_deterministic = any(r in deterministic for r in structural)
+        has_structural = bool(structural)
+        return (
+            0 if closes_by_assumption else 1,
+            0 if has_deterministic else (1 if has_structural else 2),
+            len(set(str(a) for a in goal.assumptions)),
+            goal.id,
+        )
+
+    def _prefer_branching_before_intro(self, goal: GoalNode,
+                                       structural: List[str],
+                                       assumption_strs: set) -> bool:
+        """Whether branching elim should run before intro choices."""
+        if not structural:
+            return False
+
+        f = goal.formula
+        if isinstance(f, Or):
+            left_str = str(f.left)
+            right_str = str(f.right)
+            return left_str not in assumption_strs and right_str not in assumption_strs
+
+        if isinstance(f, ElementOf) and isinstance(f.set_expr, Union):
+            left_goal = str(ElementOf(f.element, f.set_expr.left))
+            right_goal = str(ElementOf(f.element, f.set_expr.right))
+            return left_goal not in assumption_strs and right_goal not in assumption_strs
+
+        return False
 
     def export_json(self) -> dict:
         """Export the proof as JSON."""

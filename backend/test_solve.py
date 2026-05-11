@@ -15,6 +15,8 @@ tests = [
     ("contra", "(p -> q) -> (~q -> ~p)"),
     ("simp", "(p && q) -> p"),
     ("set_eq", "A = A"),
+    ("distrib_fwd", "(A union (B cap C)) subset ((A union B) cap (A union C))"),
+    ("distrib_rev", "((A union B) cap (A union C)) subset (A union (B cap C))"),
     ("distrib", "A union (B cap C) = (A union B) cap (A union C)"),
 ]
 
