@@ -1,0 +1,542 @@
+"""
+Main proof engine. Orchestrates parsing, rule application, state management, and hints.
+"""
+from __future__ import annotations
+from typing import List, Optional, Dict, Any
+from parser.formula_parser import FormulaParser, ParseError
+from parser.ast_nodes import (
+    ASTNode, And, Or, Not, Implies, Iff, Forall, Exists,
+    Equals, Union, Intersect, ElementOf, Subset, Superset, Bottom,
+)
+from .proof_state import ProofState, GoalNode
+from .rules import (
+    RULES_BY_NAME, get_applicable_rules, RuleError, InferenceRule
+)
+
+
+class ProofEngine:
+    """High-level interface for managing proof sessions."""
+
+    def __init__(self):
+        self.parser = FormulaParser()
+        self.state = ProofState()
+
+    def parse_formula(self, formula_str: str) -> dict:
+        """Parse a formula string and return its AST."""
+        try:
+            ast = self.parser.parse(formula_str)
+            return {
+                "success": True,
+                "formula": str(ast),
+                "ast": ast.to_dict(),
+            }
+        except ParseError as e:
+            return {
+                "success": False,
+                "error": e.message,
+                "line": e.line,
+                "column": e.column,
+            }
+
+    def set_goal(self, formula_str: str) -> dict:
+        """Set the main goal of the proof."""
+        try:
+            ast = self.parser.parse(formula_str)
+        except ParseError as e:
+            return {"success": False, "error": e.message}
+
+        goal = self.state.set_main_goal(ast)
+        return {
+            "success": True,
+            "goal_id": goal.id,
+            "state": self.state.to_dict(),
+        }
+
+    def add_premise(self, formula_str: str) -> dict:
+        """Add a premise to the proof context."""
+        try:
+            ast = self.parser.parse(formula_str)
+        except ParseError as e:
+            return {"success": False, "error": e.message}
+
+        self.state.add_premise(ast)
+        return {
+            "success": True,
+            "state": self.state.to_dict(),
+        }
+
+    def list_rules(self, goal_id: str) -> dict:
+        """List applicable rules for a given goal."""
+        if goal_id not in self.state.goals:
+            return {"success": False, "error": f"Goal {goal_id} not found"}
+
+        goal = self.state.goals[goal_id]
+        if goal.is_proven:
+            return {"success": True, "rules": [], "message": "Goal already proven"}
+
+        applicable = get_applicable_rules(self.state, goal)
+        return {
+            "success": True,
+            "rules": [r.to_dict() for r in applicable],
+        }
+
+    def apply_rule(self, goal_id: str, rule_name: str, params: Dict = None) -> dict:
+        """Apply a specific inference rule to a goal."""
+        if goal_id not in self.state.goals:
+            return {"success": False, "error": f"Goal {goal_id} not found"}
+
+        goal = self.state.goals[goal_id]
+        if goal.is_proven:
+            return {"success": False, "error": f"Goal {goal_id} is already proven"}
+
+        if rule_name not in RULES_BY_NAME:
+            return {"success": False, "error": f"Unknown rule: {rule_name}"}
+
+        rule = RULES_BY_NAME[rule_name]
+        if not rule.is_applicable(self.state, goal, params):
+            return {"success": False, "error": f"Rule {rule_name} is not applicable to this goal"}
+
+        try:
+            new_goal_ids = rule.apply(self.state, goal, params)
+            return {
+                "success": True,
+                "new_goal_ids": new_goal_ids,
+                "state": self.state.to_dict(),
+            }
+        except RuleError as e:
+            return {"success": False, "error": str(e)}
+
+    def undo(self) -> dict:
+        """Undo the last action."""
+        success = self.state.undo()
+        return {
+            "success": success,
+            "state": self.state.to_dict(),
+            "message": "Undo successful" if success else "Nothing to undo",
+        }
+
+    def redo(self) -> dict:
+        """Redo the last undone action."""
+        success = self.state.redo()
+        return {
+            "success": success,
+            "state": self.state.to_dict(),
+            "message": "Redo successful" if success else "Nothing to redo",
+        }
+
+    def check_proof(self) -> dict:
+        """Check if the proof is complete."""
+        is_complete = self.state.is_complete()
+        open_goals = self.state.open_goals()
+        return {
+            "success": True,
+            "is_complete": is_complete,
+            "open_goals": [g.to_dict() for g in open_goals],
+            "message": "Proof complete!" if is_complete else f"{len(open_goals)} goal(s) remaining",
+        }
+
+    def get_hint(self, goal_id: str) -> dict:
+        """Get a hint for the given goal. Uses heuristics and optionally Z3."""
+        if goal_id not in self.state.goals:
+            return {"success": False, "error": f"Goal {goal_id} not found"}
+
+        goal = self.state.goals[goal_id]
+        if goal.is_proven:
+            return {"success": True, "hint": "This goal is already proven."}
+
+        applicable = get_applicable_rules(self.state, goal)
+        if not applicable:
+            return {"success": True, "hint": "No applicable rules found. Try adding premises or using a different approach."}
+
+        # Heuristic priority: assumption > contradiction > intro rules > elim rules
+        for r in applicable:
+            if r.name == "assumption":
+                return {
+                    "success": True,
+                    "hint": f"The goal '{goal.formula}' matches an assumption. Apply 'assumption' to close it.",
+                    "suggested_rule": r.to_dict(),
+                }
+
+        for r in applicable:
+            if r.name == "contradiction":
+                return {
+                    "success": True,
+                    "hint": "A contradiction exists in your assumptions. Apply 'contradiction' to close the goal.",
+                    "suggested_rule": r.to_dict(),
+                }
+
+        # Prefer introduction rules for the goal's connective
+        intro_rules = [r for r in applicable if "intro" in r.name]
+        if intro_rules:
+            r = intro_rules[0]
+            return {
+                "success": True,
+                "hint": f"Try applying '{r.name}': {r.description}",
+                "suggested_rule": r.to_dict(),
+            }
+
+        # Elimination rules
+        elim_rules = [r for r in applicable if "elim" in r.name]
+        if elim_rules:
+            r = elim_rules[0]
+            return {
+                "success": True,
+                "hint": f"Try applying '{r.name}': {r.description}",
+                "suggested_rule": r.to_dict(),
+            }
+
+        # Fallback
+        r = applicable[0]
+        return {
+            "success": True,
+            "hint": f"Consider applying '{r.name}': {r.description}",
+            "suggested_rule": r.to_dict(),
+        }
+
+    def get_hint_with_solver(self, goal_id: str) -> dict:
+        """Enhanced hint using Z3 solver."""
+        basic_hint = self.get_hint(goal_id)
+
+        try:
+            from solvers.z3_solver import Z3Solver
+            goal = self.state.goals.get(goal_id)
+            if goal:
+                solver = Z3Solver()
+                result = solver.check_validity(goal.formula, goal.assumptions)
+                if result.get("valid"):
+                    basic_hint["solver_info"] = "Z3 confirms this goal is provable from the assumptions."
+                elif result.get("error"):
+                    basic_hint["solver_info"] = f"Z3 could not determine: {result['error']}"
+                else:
+                    basic_hint["solver_info"] = "Z3 suggests this goal may not follow from the current assumptions."
+        except ImportError:
+            basic_hint["solver_info"] = "Z3 solver not available."
+        except Exception as e:
+            basic_hint["solver_info"] = f"Solver error: {str(e)}"
+
+        return basic_hint
+
+    def solve(self, max_steps: int = 200) -> dict:
+        """Goal-directed proof solver with backtracking.
+
+        Analyzes each goal's formula structure to pick the right rule,
+        dramatically pruning the search space compared to blind DFS.
+        """
+        if not self.state.main_goal:
+            return {"success": False, "error": "No goal set"}
+
+        self.state.save_checkpoint()
+        self._solve_steps = 0
+        self._solve_max = max_steps
+        self._seen_set = set()
+
+        snapshot = self.state._snapshot()
+        if self._solve_all_goals(100):
+            return {
+                "success": True,
+                "is_complete": True,
+                "steps_taken": self._solve_steps,
+                "state": self.state.to_dict(),
+                "message": f"Proof complete in {self._solve_steps} step(s)!",
+            }
+
+        self.state._restore(snapshot)
+        return {
+            "success": True,
+            "is_complete": False,
+            "steps_taken": 0,
+            "state": self.state.to_dict(),
+            "message": f"Solver could not complete the proof. "
+                       f"{len(self.state.open_goals())} goal(s) remaining.",
+        }
+
+    def _solve_all_goals(self, depth: int) -> bool:
+        """Solve all remaining open goals."""
+        if self.state.is_complete():
+            return True
+        if depth <= 0 or self._solve_steps >= self._solve_max:
+            return False
+
+        open_goals = self.state.open_goals()
+        if not open_goals:
+            return self.state.is_complete()
+
+        # Pick the newest open goal (depth-first): finish one branch
+        # before starting another, avoiding interleaving that wastes depth.
+        goal_id = open_goals[-1].id
+        return self._solve_goal(goal_id, depth)
+
+    def _solve_goal(self, goal_id: str, depth: int) -> bool:
+        """Solve a single goal using goal-directed rule selection."""
+        if depth <= 0 or self._solve_steps >= self._solve_max:
+            return False
+
+        goal = self.state.goals.get(goal_id)
+        if not goal or goal.is_proven:
+            return self._solve_all_goals(depth)
+
+        return self._try_solve_goal(goal_id, goal, depth)
+
+    def _try_solve_goal(self, goal_id: str, goal, depth: int) -> bool:
+        """Core goal-directed solving logic.
+
+        Strategy:
+        1. Close immediately if possible (assumption, contradiction)
+        2. For deterministic intro rules (and_intro, implies_intro, etc.),
+           apply them directly — they have exactly one decomposition.
+        3. For goals needing enrichment, apply ONE elim rule at a time,
+           then recurse (which re-checks assumption and structural rules).
+        4. For choice rules, try each option with backtracking.
+        """
+        f = goal.formula
+        assumption_strs = set(str(a) for a in goal.assumptions)
+
+        # Phase 1: Try to close immediately
+        if str(f) in assumption_strs:
+            return self._try_rule('assumption', goal_id, depth)
+
+        if isinstance(f, Bottom):
+            if self._try_rule('contradiction', goal_id, depth):
+                return True
+
+        # Phase 2: Determine structural rules
+        structural = self._structural_rules(f, goal)
+
+        # Deterministic rules (exactly one way to decompose) — apply directly
+        deterministic = {'and_intro', 'implies_intro', 'not_intro', 'iff_intro',
+                         'forall_intro', 'exists_intro', 'equality_intro',
+                         'subset_intro', 'intersect_intro'}
+
+        for rule_name in structural:
+            if rule_name in deterministic:
+                return self._try_rule(rule_name, goal_id, depth)
+
+        # Phase 3: Try non-branching elim rules first (intersect_elim,
+        # and_elim add to assumptions without creating new goals).
+        # These are "free" enrichments that don't branch the search.
+        elim_rules = self._useful_elim_rules(goal)
+        non_branching = [r for r in elim_rules if r not in ('union_elim', 'or_elim')]
+        for rule_name in non_branching:
+            if self._try_rule(rule_name, goal_id, depth):
+                return True
+
+        # Phase 4: Try structural choice rules (union_intro, or_intro)
+        for rule_name in structural:
+            if self._try_rule(rule_name, goal_id, depth):
+                return True
+
+        # Phase 5: Try branching elim rules (union_elim, or_elim) as last resort
+        branching = [r for r in elim_rules if r in ('union_elim', 'or_elim')]
+        for rule_name in branching:
+            if self._try_rule(rule_name, goal_id, depth):
+                return True
+
+        return False
+
+    def _structural_rules(self, f, goal) -> List[str]:
+        """Return the intro rule names appropriate for the goal's formula."""
+        if isinstance(f, And):
+            return ['and_intro']
+        if isinstance(f, Implies):
+            return ['implies_intro']
+        if isinstance(f, Not):
+            return ['not_intro']
+        if isinstance(f, Iff):
+            return ['iff_intro']
+        if isinstance(f, Or):
+            # Prefer the side that matches an assumption
+            left_str = str(f.left)
+            right_str = str(f.right)
+            assumption_strs = set(str(a) for a in goal.assumptions)
+            if left_str in assumption_strs:
+                return ['or_intro_left', 'or_intro_right']
+            if right_str in assumption_strs:
+                return ['or_intro_right', 'or_intro_left']
+            return ['or_intro_left', 'or_intro_right']
+        if isinstance(f, Forall):
+            return ['forall_intro']
+        if isinstance(f, Exists):
+            return ['exists_intro']
+        if isinstance(f, Equals):
+            return ['equality_intro']
+        if isinstance(f, Subset):
+            return ['subset_intro']
+        if isinstance(f, Superset):
+            return ['subset_intro']
+        if isinstance(f, ElementOf):
+            rhs = f.set_expr
+            if isinstance(rhs, Intersect):
+                return ['intersect_intro']
+            if isinstance(rhs, Union):
+                # Check which side of the union is more promising
+                elem = f.element
+                assumption_strs = set(str(a) for a in goal.assumptions)
+                left_goal = str(ElementOf(elem, rhs.left))
+                right_goal = str(ElementOf(elem, rhs.right))
+                if left_goal in assumption_strs:
+                    return ['union_intro_left', 'union_intro_right']
+                if right_goal in assumption_strs:
+                    return ['union_intro_right', 'union_intro_left']
+                return ['union_intro_left', 'union_intro_right']
+            # Simple element-of: no structural rule, try elims
+            return []
+        return []
+
+    def _useful_elim_rules(self, goal) -> List[str]:
+        """Return elim rules that would produce genuinely new assumptions."""
+        result = []
+        assumption_strs = set(str(a) for a in goal.assumptions)
+
+        for a in goal.assumptions:
+            if isinstance(a, And):
+                if str(a.left) not in assumption_strs:
+                    if 'and_elim_left' not in result:
+                        result.append('and_elim_left')
+                if str(a.right) not in assumption_strs:
+                    if 'and_elim_right' not in result:
+                        result.append('and_elim_right')
+            if isinstance(a, ElementOf):
+                rhs = a.set_expr
+                if isinstance(rhs, Intersect):
+                    elem = a.element
+                    l_str = str(ElementOf(elem, rhs.left))
+                    r_str = str(ElementOf(elem, rhs.right))
+                    if l_str not in assumption_strs or r_str not in assumption_strs:
+                        if 'intersect_elim' not in result:
+                            result.append('intersect_elim')
+                if isinstance(rhs, Union):
+                    # Only offer union_elim if it would produce new info
+                    elem = a.element
+                    left_str = str(ElementOf(elem, rhs.left))
+                    right_str = str(ElementOf(elem, rhs.right))
+                    # Offer union_elim only if we don't already have both branches
+                    if left_str not in assumption_strs or right_str not in assumption_strs:
+                        # Additional check: union_elim is only useful if eliminating
+                        # could help close the goal. Check if either branch contains
+                        # the goal's element-set, or matches the goal directly.
+                        if self._union_elim_useful(goal.formula, a):
+                            if 'union_elim' not in result:
+                                result.append('union_elim')
+            if isinstance(a, Implies):
+                # Check if the antecedent is in assumptions
+                if str(a.left) in assumption_strs and str(a.right) not in assumption_strs:
+                    if 'implies_elim' not in result:
+                        result.append('implies_elim')
+            if isinstance(a, Not):
+                inner = a.operand
+                if inner and str(inner) in assumption_strs:
+                    if 'contradiction' not in result:
+                        result.append('contradiction')
+
+        return result
+
+    def _union_elim_useful(self, goal_formula, union_assumption) -> bool:
+        """Check if union_elim on this union could plausibly help prove the goal.
+
+        A union x ∈ A ∪ B is worth eliminating if:
+        - The goal involves x and a set built from A or B
+        - The goal's element matches the union's element
+        - Some elimination chain could derive the goal
+        """
+        # If the goal isn't an ElementOf, union_elim probably doesn't help
+        if not isinstance(goal_formula, ElementOf):
+            return False
+        # Element must match (same x being talked about)
+        if str(goal_formula.element) != str(union_assumption.element):
+            return False
+        # The union assumption is about the same element as the goal — useful
+        return True
+
+    def _try_rule(self, rule_name: str, goal_id: str, depth: int) -> bool:
+        """Try applying a rule; if it succeeds and all goals solve, return True.
+        Otherwise backtrack."""
+        rule = RULES_BY_NAME.get(rule_name)
+        if not rule:
+            return False
+
+        goal = self.state.goals.get(goal_id)
+        if not goal or goal.is_proven:
+            return self._solve_all_goals(depth)
+
+        if not rule.is_applicable(self.state, goal):
+            return False
+
+        # Path-based cycle detection: avoid re-applying the same rule on
+        # the same goal-state. This prevents loops like union_elim removing
+        # an assumption that intersect_elim re-adds.
+        sig = (rule_name, self._goal_sig(goal))
+        if sig in self._seen_set:
+            return False
+        self._seen_set.add(sig)
+
+        snapshot = self.state._snapshot()
+        old_steps = self._solve_steps
+
+        try:
+            goal = self.state.goals[goal_id]
+            rule.apply(self.state, goal)
+            self._solve_steps += 1
+
+            if self._solve_all_goals(depth - 1):
+                return True
+
+            self.state._restore(snapshot)
+            self._solve_steps = old_steps
+            return False
+        except Exception:
+            self.state._restore(snapshot)
+            self._solve_steps = old_steps
+            return False
+        finally:
+            self._seen_set.discard(sig)
+
+    def _goal_sig(self, goal) -> str:
+        """Signature for a single goal (formula + deduplicated assumptions)."""
+        return str(goal.formula) + '||' + str(tuple(sorted(set(str(a) for a in goal.assumptions))))
+
+    def export_json(self) -> dict:
+        """Export the proof as JSON."""
+        return self.state.to_export_json()
+
+    def export_latex(self) -> str:
+        """Export the proof as LaTeX."""
+        return self.state.to_latex()
+
+    def get_state(self) -> dict:
+        """Get the current proof state."""
+        return self.state.to_dict()
+
+    def get_graph_data(self) -> dict:
+        """Get proof state formatted for Cytoscape.js visualization."""
+        nodes = []
+        edges = []
+
+        for gid, goal in self.state.goals.items():
+            node_class = "proven" if goal.is_proven else "open"
+            if gid == self.state.main_goal:
+                node_class += " main"
+            nodes.append({
+                "data": {
+                    "id": gid,
+                    "label": str(goal.formula),
+                    "is_proven": goal.is_proven,
+                    "rule": goal.rule_applied or "",
+                    "goal_label": goal.label,
+                },
+                "classes": node_class,
+            })
+
+            if goal.parent_id:
+                edges.append({
+                    "data": {
+                        "id": f"e_{goal.parent_id}_{gid}",
+                        "source": goal.parent_id,
+                        "target": gid,
+                        "label": goal.rule_applied or "",
+                    }
+                })
+
+        return {
+            "nodes": nodes,
+            "edges": edges,
+        }
