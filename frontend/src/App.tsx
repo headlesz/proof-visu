@@ -1,7 +1,16 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import {
-  ThemeProvider, createTheme, CssBaseline, Box, AppBar, Toolbar, Typography,
-  IconButton, Snackbar, Alert, Tooltip,
+  ThemeProvider,
+  createTheme,
+  CssBaseline,
+  Box,
+  Typography,
+  Snackbar,
+  Alert,
+  Paper,
+  useMediaQuery,
+  Stack,
+  Chip,
 } from '@mui/material';
 import AccountTreeIcon from '@mui/icons-material/AccountTree';
 import FormulaInput from './components/FormulaInput';
@@ -14,31 +23,85 @@ import HintDialog from './components/HintDialog';
 import ExportDialog from './components/ExportDialog';
 import { api } from './services/api';
 import { ProofState, RuleInfo, HintResult, GraphData } from './types';
+import { RADII } from './theme/radii';
 
 const theme = createTheme({
   palette: {
     mode: 'dark',
-    primary: { main: '#7c4dff' },
-    secondary: { main: '#00e5ff' },
-    background: { default: '#0d1117', paper: '#161b22' },
+    primary: { main: '#f4a261' },
+    secondary: { main: '#2a9d8f' },
+    success: { main: '#7dd3a7' },
+    warning: { main: '#f6c177' },
+    error: { main: '#ef7d68' },
+    background: {
+      default: '#0b1418',
+      paper: '#102027',
+    },
+    text: {
+      primary: '#f4f1e8',
+      secondary: '#b7c8ca',
+    },
   },
   typography: {
-    fontFamily: '"Inter", "Roboto", sans-serif',
-    h6: { fontWeight: 600 },
+    fontFamily: '"Sora", "Manrope", "Avenir Next", "Segoe UI", sans-serif',
+    h5: {
+      fontWeight: 700,
+      letterSpacing: '-0.015em',
+    },
+    button: {
+      fontWeight: 600,
+      letterSpacing: '0.015em',
+    },
   },
   shape: { borderRadius: 12 },
   components: {
     MuiPaper: {
       styleOverrides: {
         root: {
-          backgroundImage: 'none',
-          border: '1px solid rgba(255,255,255,0.06)',
+          backgroundImage: 'linear-gradient(145deg, rgba(255,255,255,0.05), rgba(255,255,255,0.01))',
+          border: '1px solid rgba(244, 162, 97, 0.18)',
+          boxShadow: '0 18px 42px rgba(0,0,0,0.25)',
+          backdropFilter: 'blur(10px)',
+          transition: 'transform 240ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 240ms ease, border-color 240ms ease',
         },
       },
     },
     MuiButton: {
       styleOverrides: {
-        root: { textTransform: 'none', fontWeight: 500 },
+        root: {
+          borderRadius: RADII.control,
+          transition: 'transform 180ms ease, box-shadow 180ms ease, background-color 180ms ease, border-color 180ms ease',
+          '&:hover': {
+            transform: 'translateY(-1px)',
+          },
+        },
+      },
+    },
+    MuiChip: {
+      styleOverrides: {
+        root: {
+          borderRadius: RADII.pill,
+          fontWeight: 600,
+        },
+      },
+    },
+    MuiOutlinedInput: {
+      styleOverrides: {
+        root: {
+          borderRadius: RADII.control,
+          transition: 'box-shadow 200ms ease, border-color 200ms ease',
+          '&.Mui-focused': {
+            boxShadow: '0 0 0 3px rgba(244, 162, 97, 0.2)',
+          },
+        },
+      },
+    },
+    MuiDialog: {
+      styleOverrides: {
+        paper: {
+          borderRadius: RADII.shell,
+          backgroundImage: 'linear-gradient(150deg, rgba(27,45,53,0.95), rgba(16,32,39,0.95))',
+        },
       },
     },
   },
@@ -54,6 +117,7 @@ function App() {
   const [exportOpen, setExportOpen] = useState(false);
   const [exportContent, setExportContent] = useState('');
   const [exportFormat, setExportFormat] = useState<'json' | 'latex'>('json');
+  const isMobile = useMediaQuery('(max-width:960px)');
   const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' | 'info' | 'warning' }>({
     open: false, message: '', severity: 'info',
   });
@@ -272,30 +336,104 @@ function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
-        <AppBar position="static" elevation={0} sx={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-          <Toolbar variant="dense">
-            <Tooltip title="Interactive Proof Visualizer">
-              <IconButton edge="start" color="inherit" sx={{ mr: 1 }}>
-                <AccountTreeIcon />
-              </IconButton>
-            </Tooltip>
-            <Typography variant="h6" sx={{ flexGrow: 1, fontSize: '1rem' }}>
-              Proof Visualizer
-            </Typography>
-            {proofState?.is_complete && (
-              <Typography variant="body2" sx={{ color: '#4caf50', fontWeight: 600, mr: 2 }}>
-                PROOF COMPLETE
+      <Box
+        sx={{
+          position: 'relative',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: { xs: 1.2, md: 1.8 },
+          height: '100dvh',
+          p: { xs: 1.2, md: 1.8 },
+          overflow: 'hidden',
+        }}
+      >
+        <Box className="ambient-orb orb-a" />
+        <Box className="ambient-orb orb-b" />
+
+        <Paper
+          className="flow-panel"
+          sx={{
+            px: { xs: 1.4, md: 2.2 },
+            py: { xs: 1.2, md: 1.4 },
+            borderRadius: RADII.shell,
+            position: 'relative',
+            overflow: 'hidden',
+          }}
+        >
+          <Box
+            sx={{
+              position: 'absolute',
+              inset: 0,
+              background: 'linear-gradient(120deg, rgba(244,162,97,0.08), rgba(42,157,143,0.06))',
+              pointerEvents: 'none',
+            }}
+          />
+          <Stack direction="row" spacing={1.2} alignItems="center" sx={{ position: 'relative' }}>
+            <Box
+              className="pulse-glow"
+              sx={{
+                width: 36,
+                height: 36,
+                borderRadius: RADII.control,
+                display: 'grid',
+                placeItems: 'center',
+                bgcolor: 'rgba(42,157,143,0.18)',
+                border: '1px solid rgba(42,157,143,0.45)',
+              }}
+            >
+              <AccountTreeIcon sx={{ color: 'secondary.main', fontSize: 20 }} />
+            </Box>
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Typography variant="h5" sx={{ fontSize: { xs: '1.05rem', md: '1.32rem' } }}>
+                Proof Visualizer Studio
               </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.2 }}>
+                Fluid theorem exploration with interactive proof construction
+              </Typography>
+            </Box>
+            {proofState?.is_complete && (
+              <Chip
+                label="Proof Complete"
+                color="success"
+                sx={{
+                  fontSize: '0.74rem',
+                  px: 1,
+                  border: '1px solid rgba(125,211,167,0.5)',
+                  bgcolor: 'rgba(125,211,167,0.14)',
+                }}
+              />
             )}
-          </Toolbar>
-        </AppBar>
+          </Stack>
+        </Paper>
 
-        <FormulaInput onSetGoal={handleSetGoal} onAddPremise={handleAddPremise} />
+        <Box className="flow-panel" sx={{ animationDelay: '40ms' }}>
+          <FormulaInput onSetGoal={handleSetGoal} onAddPremise={handleAddPremise} />
+        </Box>
 
-        <Box sx={{ display: 'flex', flex: 1, overflow: 'hidden', gap: 0 }}>
-          {/* Left sidebar: Goals + Rules */}
-          <Box sx={{ width: 320, minWidth: 280, display: 'flex', flexDirection: 'column', borderRight: '1px solid rgba(255,255,255,0.06)' }}>
+        <Box
+          className="flow-panel"
+          sx={{
+            animationDelay: '90ms',
+            display: 'flex',
+            flexDirection: isMobile ? 'column' : 'row',
+            gap: { xs: 1.2, md: 1.6 },
+            flex: 1,
+            minHeight: 0,
+            overflow: 'hidden',
+          }}
+        >
+          <Paper
+            sx={{
+              width: isMobile ? '100%' : 360,
+              minWidth: isMobile ? '100%' : 300,
+              maxHeight: isMobile ? '44%' : '100%',
+              borderRadius: RADII.shell,
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+              borderColor: 'rgba(244, 162, 97, 0.24)',
+            }}
+          >
             <GoalsList
               proofState={proofState}
               selectedGoal={selectedGoal}
@@ -306,34 +444,46 @@ function App() {
               selectedGoal={selectedGoal}
               onApplyRule={handleApplyRule}
             />
-          </Box>
+          </Paper>
 
-          {/* Main area: Graph + Steps */}
-          <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-            <Box sx={{ flex: 2, minHeight: 200 }}>
+          <Paper
+            sx={{
+              flex: 1,
+              minHeight: 0,
+              borderRadius: RADII.shell,
+              p: { xs: 1, md: 1.2 },
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 1.2,
+              borderColor: 'rgba(42, 157, 143, 0.26)',
+            }}
+          >
+            <Box sx={{ flex: 2.1, minHeight: 220, borderRadius: RADII.panel, overflow: 'hidden' }}>
               <ProofGraph
                 graphData={graphData}
                 selectedGoal={selectedGoal}
                 onSelectGoal={handleSelectGoal}
               />
             </Box>
-            <Box sx={{ flex: 1, minHeight: 150, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+            <Box sx={{ flex: 1, minHeight: 140, borderRadius: RADII.panel, overflow: 'hidden' }}>
               <ProofSteps steps={proofState?.steps || []} />
             </Box>
-          </Box>
+          </Paper>
         </Box>
 
-        <ControlBar
-          onUndo={handleUndo}
-          onRedo={handleRedo}
-          onCheck={handleCheck}
-          onSolve={handleSolve}
-          onHint={handleHint}
-          onExportJson={() => handleExport('json')}
-          onExportLatex={() => handleExport('latex')}
-          onReset={handleReset}
-          hasProof={!!proofState?.main_goal}
-        />
+        <Box className="flow-panel" sx={{ animationDelay: '130ms' }}>
+          <ControlBar
+            onUndo={handleUndo}
+            onRedo={handleRedo}
+            onCheck={handleCheck}
+            onSolve={handleSolve}
+            onHint={handleHint}
+            onExportJson={() => handleExport('json')}
+            onExportLatex={() => handleExport('latex')}
+            onReset={handleReset}
+            hasProof={!!proofState?.main_goal}
+          />
+        </Box>
 
         <HintDialog
           open={hintOpen}
@@ -354,7 +504,7 @@ function App() {
 
         <Snackbar
           open={snackbar.open}
-          autoHideDuration={4000}
+          autoHideDuration={3600}
           onClose={() => setSnackbar(s => ({ ...s, open: false }))}
           anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
         >
@@ -362,7 +512,12 @@ function App() {
             onClose={() => setSnackbar(s => ({ ...s, open: false }))}
             severity={snackbar.severity}
             variant="filled"
-            sx={{ width: '100%' }}
+            sx={{
+              width: '100%',
+              borderRadius: RADII.control,
+              border: '1px solid rgba(255,255,255,0.2)',
+              backdropFilter: 'blur(8px)',
+            }}
           >
             {snackbar.message}
           </Alert>

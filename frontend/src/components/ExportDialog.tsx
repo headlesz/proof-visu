@@ -5,6 +5,7 @@ import {
 } from '@mui/material';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import DownloadIcon from '@mui/icons-material/Download';
+import { RADII } from '../theme/radii';
 
 interface Props {
   open: boolean;
@@ -32,38 +33,50 @@ export default function ExportDialog({ open, content, format, onClose }: Props) 
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-      <DialogTitle>Export Proof ({format.toUpperCase()})</DialogTitle>
+      <DialogTitle sx={{ fontWeight: 700, pb: 1 }}>
+        Export Proof ({format.toUpperCase()})
+      </DialogTitle>
       <DialogContent>
         <Box
           sx={{
-            bgcolor: '#0d1117',
-            borderRadius: 1,
-            p: 2,
+            bgcolor: 'rgba(8,16,20,0.82)',
+            borderRadius: RADII.panel,
+            p: 1.5,
             maxHeight: 400,
             overflow: 'auto',
-            border: '1px solid rgba(255,255,255,0.1)',
+            border: '1px solid rgba(183,200,202,0.22)',
           }}
         >
           <Typography
             component="pre"
             sx={{
-              fontFamily: '"JetBrains Mono", monospace',
-              fontSize: '0.8rem',
+              fontFamily: '"DM Mono", "JetBrains Mono", monospace',
+              fontSize: '0.79rem',
               whiteSpace: 'pre-wrap',
               wordBreak: 'break-word',
               m: 0,
+              color: '#cfe1e2',
             }}
           >
             {content}
           </Typography>
         </Box>
       </DialogContent>
-      <DialogActions>
+      <DialogActions sx={{ px: 2.2, pb: 1.7 }}>
         <Button onClick={onClose}>Close</Button>
-        <Button startIcon={<ContentCopyIcon />} onClick={handleCopy}>
+        <Button startIcon={<ContentCopyIcon />} onClick={handleCopy} variant="outlined">
           Copy
         </Button>
-        <Button startIcon={<DownloadIcon />} onClick={handleDownload} variant="contained">
+        <Button
+          startIcon={<DownloadIcon />}
+          onClick={handleDownload}
+          variant="contained"
+          sx={{
+            bgcolor: 'secondary.main',
+            color: '#102027',
+            '&:hover': { bgcolor: '#38b2a4' },
+          }}
+        >
           Download
         </Button>
       </DialogActions>

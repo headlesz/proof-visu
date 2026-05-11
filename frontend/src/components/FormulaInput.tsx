@@ -5,6 +5,7 @@ import {
 } from '@mui/material';
 import FunctionsIcon from '@mui/icons-material/Functions';
 import AddIcon from '@mui/icons-material/Add';
+import { RADII } from '../theme/radii';
 
 interface Props {
   onSetGoal: (formula: string) => void;
@@ -53,73 +54,139 @@ export default function FormulaInput({ onSetGoal, onAddPremise }: Props) {
 
   return (
     <Paper
-      elevation={0}
       sx={{
-        px: 2, py: 1.5,
-        borderBottom: '1px solid rgba(255,255,255,0.06)',
-        borderRadius: 0,
+        p: { xs: 1.1, md: 1.4 },
+        borderRadius: RADII.shell,
+        borderColor: 'rgba(42,157,143,0.24)',
+        overflow: 'hidden',
+        position: 'relative',
       }}
     >
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
-        <FunctionsIcon sx={{ color: 'primary.main', fontSize: 20 }} />
-        <Typography variant="subtitle2" sx={{ color: 'text.secondary', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: 1 }}>
-          Formula Input
-        </Typography>
-        <ToggleButtonGroup
-          size="small"
-          value={mode}
-          exclusive
-          onChange={(_, v) => v && setMode(v)}
-          sx={{ ml: 'auto' }}
-        >
-          <ToggleButton value="goal" sx={{ px: 2, py: 0.25, fontSize: '0.75rem' }}>Set Goal</ToggleButton>
-          <ToggleButton value="premise" sx={{ px: 2, py: 0.25, fontSize: '0.75rem' }}>Add Premise</ToggleButton>
-        </ToggleButtonGroup>
-      </Box>
+      <Box
+        sx={{
+          position: 'absolute',
+          inset: 0,
+          background: 'linear-gradient(120deg, rgba(42,157,143,0.08), rgba(244,162,97,0.03))',
+          pointerEvents: 'none',
+        }}
+      />
 
-      <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-        <TextField
-          fullWidth
-          size="small"
-          placeholder={mode === 'goal' ? 'Enter goal formula, e.g. (p ∧ q) → (q ∧ p)' : 'Enter premise formula'}
-          value={formula}
-          onChange={e => setFormula(e.target.value)}
-          onKeyDown={handleKeyDown}
-          sx={{
-            '& .MuiOutlinedInput-root': {
-              fontFamily: '"JetBrains Mono", monospace',
-              fontSize: '0.9rem',
-            },
-          }}
-        />
-        <Button
-          variant="contained"
-          onClick={handleSubmit}
-          startIcon={mode === 'goal' ? <FunctionsIcon /> : <AddIcon />}
-          disabled={!formula.trim()}
-          sx={{ minWidth: 120, whiteSpace: 'nowrap' }}
-        >
-          {mode === 'goal' ? 'Set Goal' : 'Add Premise'}
-        </Button>
-      </Box>
+      <Box sx={{ position: 'relative' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.2, mb: 1.1, flexWrap: 'wrap' }}>
+          <Box
+            sx={{
+              width: 28,
+              height: 28,
+              borderRadius: RADII.icon,
+              display: 'grid',
+              placeItems: 'center',
+              bgcolor: 'rgba(244,162,97,0.16)',
+              border: '1px solid rgba(244,162,97,0.44)',
+            }}
+          >
+            <FunctionsIcon sx={{ color: 'primary.main', fontSize: 17 }} />
+          </Box>
+          <Typography
+            variant="subtitle2"
+            sx={{
+              fontSize: '0.73rem',
+              textTransform: 'uppercase',
+              letterSpacing: 1.15,
+              color: 'text.secondary',
+            }}
+          >
+            Formula Entry
+          </Typography>
 
-      <Box sx={{ display: 'flex', gap: 0.5, mt: 1, flexWrap: 'wrap' }}>
-        {SYMBOL_SHORTCUTS.map(s => (
-          <Tooltip key={s.symbol} title={s.title} arrow>
-            <Chip
-              label={s.label}
-              size="small"
-              variant="outlined"
-              onClick={() => insertSymbol(s.symbol)}
-              sx={{
-                fontFamily: '"JetBrains Mono", monospace',
-                fontSize: '0.85rem',
-                cursor: 'pointer',
-                '&:hover': { backgroundColor: 'rgba(124,77,255,0.15)' },
-              }}
-            />
-          </Tooltip>
-        ))}
+          <ToggleButtonGroup
+            size="small"
+            value={mode}
+            exclusive
+            onChange={(_, v) => v && setMode(v)}
+            sx={{
+              ml: 'auto',
+              '& .MuiToggleButton-root': {
+                px: 1.8,
+                fontSize: '0.74rem',
+                borderColor: 'rgba(244,162,97,0.28)',
+                color: 'text.secondary',
+                '&.Mui-selected': {
+                  color: '#0f1f24',
+                  bgcolor: 'primary.main',
+                  borderColor: 'rgba(244,162,97,0.95)',
+                },
+              },
+            }}
+          >
+            <ToggleButton value="goal">Set Goal</ToggleButton>
+            <ToggleButton value="premise">Add Premise</ToggleButton>
+          </ToggleButtonGroup>
+        </Box>
+
+        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: { xs: 'wrap', md: 'nowrap' } }}>
+          <TextField
+            fullWidth
+            size="small"
+            placeholder={mode === 'goal' ? 'Try: (A ∪ (B ∩ C)) = ((A ∪ B) ∩ (A ∪ C))' : 'Enter premise formula'}
+            value={formula}
+            onChange={e => setFormula(e.target.value)}
+            onKeyDown={handleKeyDown}
+            sx={{
+              '& .MuiOutlinedInput-root': {
+                fontFamily: '"DM Mono", "JetBrains Mono", monospace',
+                fontSize: '0.86rem',
+                bgcolor: 'rgba(11,20,24,0.42)',
+              },
+            }}
+          />
+          <Button
+            variant="contained"
+            onClick={handleSubmit}
+            startIcon={mode === 'goal' ? <FunctionsIcon /> : <AddIcon />}
+            disabled={!formula.trim()}
+            sx={{
+              minWidth: 138,
+              height: 40,
+              boxShadow: '0 10px 24px rgba(244,162,97,0.25)',
+              bgcolor: 'primary.main',
+              color: '#102027',
+              '&:hover': {
+                bgcolor: '#f7b47d',
+                boxShadow: '0 14px 26px rgba(244,162,97,0.28)',
+              },
+            }}
+          >
+            {mode === 'goal' ? 'Set Goal' : 'Add Premise'}
+          </Button>
+        </Box>
+
+        <Box sx={{ display: 'flex', gap: 0.55, mt: 1.15, flexWrap: 'wrap' }}>
+          {SYMBOL_SHORTCUTS.map(s => (
+            <Tooltip key={s.symbol} title={s.title} arrow>
+              <Chip
+                label={s.label}
+                onClick={() => insertSymbol(s.symbol)}
+                sx={{
+                  fontFamily: '"DM Mono", "JetBrains Mono", monospace',
+                  fontSize: '0.82rem',
+                  height: 26,
+                  cursor: 'pointer',
+                  color: 'text.secondary',
+                  borderColor: 'rgba(183,200,202,0.32)',
+                  bgcolor: 'rgba(13,26,31,0.45)',
+                  transition: 'transform 180ms ease, border-color 180ms ease, color 180ms ease, background-color 180ms ease',
+                  '&:hover': {
+                    transform: 'translateY(-2px)',
+                    color: 'primary.main',
+                    borderColor: 'rgba(244,162,97,0.62)',
+                    bgcolor: 'rgba(244,162,97,0.14)',
+                  },
+                }}
+                variant="outlined"
+              />
+            </Tooltip>
+          ))}
+        </Box>
       </Box>
     </Paper>
   );
