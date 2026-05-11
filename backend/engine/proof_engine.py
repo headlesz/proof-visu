@@ -3,6 +3,7 @@ Main proof engine. Orchestrates parsing, rule application, state management, and
 """
 from __future__ import annotations
 from typing import List, Optional, Dict, Any
+import copy
 from parser.formula_parser import FormulaParser, ParseError
 from parser.ast_nodes import (
     ASTNode, And, Or, Not, Implies, Iff, Forall, Exists,
@@ -75,9 +76,16 @@ class ProofEngine:
             return {"success": True, "rules": [], "message": "Goal already proven"}
 
         applicable = get_applicable_rules(self.state, goal)
+        filtered: List[InferenceRule] = []
+        for r in applicable:
+            # Rules panel applies elim rules without source selection. Hide
+            # options that would repeat an elim on the same source in this path.
+            if self._is_manual_redundant_elim(goal, r.name):
+                continue
+            filtered.append(r)
         return {
             "success": True,
-            "rules": [r.to_dict() for r in applicable],
+            "rules": [r.to_dict() for r in filtered],
         }
 
     def apply_rule(self, goal_id: str, rule_name: str, params: Dict = None) -> dict:
@@ -96,8 +104,19 @@ class ProofEngine:
         if not rule.is_applicable(self.state, goal, params):
             return {"success": False, "error": f"Rule {rule_name} is not applicable to this goal"}
 
+        apply_params = dict(params or {})
+        elim_choice = self._select_manual_elim_source(goal, rule_name, apply_params)
+        elim_source = elim_choice[1] if elim_choice else None
+        if rule_name in {"union_elim", "intersect_elim"} and elim_choice is None:
+            return {"success": False, "error": f"No selectable source remains for rule {rule_name}"}
+        if elim_choice is not None and "source_idx" not in apply_params:
+            apply_params["source_idx"] = elim_choice[0]
+
         try:
-            new_goal_ids = rule.apply(self.state, goal, params)
+            new_goal_ids = rule.apply(self.state, goal, apply_params)
+            if elim_source is not None:
+                marker = self._elim_marker(rule_name, elim_source)
+                self._record_manual_elim_marker(goal_id, marker, new_goal_ids)
             return {
                 "success": True,
                 "new_goal_ids": new_goal_ids,
@@ -105,6 +124,54 @@ class ProofEngine:
             }
         except RuleError as e:
             return {"success": False, "error": str(e)}
+
+    def _elim_marker(self, rule_name: str, source: ASTNode) -> str:
+        return f"{rule_name}|{source}"
+
+    def _select_manual_elim_source(self, goal: GoalNode, rule_name: str,
+                                   params: Dict = None) -> Optional[tuple]:
+        """Pick a non-redundant elim source as (index, assumption)."""
+        p = params or {}
+        source_idx = p.get("source_idx", None)
+
+        if source_idx is not None:
+            if 0 <= source_idx < len(goal.assumptions):
+                source = goal.assumptions[source_idx]
+                marker = self._elim_marker(rule_name, source)
+                if marker in goal.manual_elim_history:
+                    return None
+                return source_idx, source
+            return None
+
+        if rule_name == "intersect_elim":
+            for i, a in enumerate(goal.assumptions):
+                if isinstance(a, ElementOf) and isinstance(a.set_expr, Intersect):
+                    marker = self._elim_marker(rule_name, a)
+                    if marker in goal.manual_elim_history:
+                        continue
+                    return i, a
+        if rule_name == "union_elim":
+            for i, a in enumerate(goal.assumptions):
+                if isinstance(a, ElementOf) and isinstance(a.set_expr, Union):
+                    marker = self._elim_marker(rule_name, a)
+                    if marker in goal.manual_elim_history:
+                        continue
+                    return i, a
+        return None
+
+    def _is_manual_redundant_elim(self, goal: GoalNode, rule_name: str, params: Dict = None) -> bool:
+        if rule_name not in {"union_elim", "intersect_elim"}:
+            return False
+        return self._select_manual_elim_source(goal, rule_name, params) is None
+
+    def _record_manual_elim_marker(self, goal_id: str, marker: str, new_goal_ids: List[str]):
+        goal = self.state.goals.get(goal_id)
+        if goal and marker not in goal.manual_elim_history:
+            goal.manual_elim_history.append(marker)
+        for gid in new_goal_ids or []:
+            child = self.state.goals.get(gid)
+            if child and marker not in child.manual_elim_history:
+                child.manual_elim_history.append(marker)
 
     def undo(self) -> dict:
         """Undo the last action."""
@@ -225,6 +292,35 @@ class ProofEngine:
         if not self.state.main_goal:
             return {"success": False, "error": "No goal set"}
 
+        primary = self._attempt_solve(max_steps)
+        if primary.get("is_complete"):
+            return primary
+
+        # If manual interaction committed to a dead-end branch (for example,
+        # choosing one intro branch where the other was needed), run a fresh
+        # solve from theorem + premises so "Solve" can still complete solvable
+        # problems from the UI.
+        theorem_goal = self.state.goals.get(self.state.main_goal)
+        if theorem_goal is None:
+            return primary
+
+        scratch = ProofEngine()
+        scratch.state.premises = copy.deepcopy(self.state.premises)
+        scratch.state.set_main_goal(copy.deepcopy(theorem_goal.formula))
+        recovered = scratch._attempt_solve(max_steps)
+        if recovered.get("is_complete"):
+            self.state = scratch.state
+            recovered["message"] = (
+                f"Proof complete in {recovered['steps_taken']} step(s)! "
+                "(recovered from a manual dead-end by re-solving from theorem)"
+            )
+            recovered["state"] = self.state.to_dict()
+            return recovered
+
+        return primary
+
+    def _attempt_solve(self, max_steps: int = 200) -> dict:
+        """Run one solving attempt from the current state."""
         self.state.save_checkpoint()
         self._solve_steps = 0
         self._solve_max = max_steps

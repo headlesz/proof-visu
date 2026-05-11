@@ -19,6 +19,7 @@ class GoalNode:
     parent_id: Optional[str] = None
     rule_applied: Optional[str] = None
     children_ids: List[str] = field(default_factory=list)
+    manual_elim_history: List[str] = field(default_factory=list)
     label: str = ""
 
     def to_dict(self) -> dict:
@@ -32,6 +33,7 @@ class GoalNode:
             "parent_id": self.parent_id,
             "rule_applied": self.rule_applied,
             "children_ids": self.children_ids,
+            "manual_elim_history": self.manual_elim_history,
             "label": self.label,
         }
 
@@ -136,12 +138,16 @@ class ProofState:
     def add_goal(self, formula: ASTNode, assumptions: List[ASTNode] = None,
                  parent_id: str = None, label: str = "") -> GoalNode:
         """Add a new goal to the proof."""
+        inherited_manual_history: List[str] = []
+        if parent_id and parent_id in self.goals:
+            inherited_manual_history = list(self.goals[parent_id].manual_elim_history)
         gid = self.fresh_goal_id()
         node = GoalNode(
             id=gid,
             formula=formula,
             assumptions=assumptions or [],
             parent_id=parent_id,
+            manual_elim_history=inherited_manual_history,
             label=label,
         )
         self.goals[gid] = node
