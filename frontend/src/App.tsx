@@ -407,7 +407,7 @@ function App() {
                 Proof Visualizer Studio
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mt: 0.2 }}>
-                Fluid theorem exploration with interactive proof construction
+                Fluid theorem exploration with interactive proof construction | Made with love by Discrete Dopeness
               </Typography>
             </Box>
             {proofState?.is_complete && (

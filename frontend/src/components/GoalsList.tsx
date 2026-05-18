@@ -16,7 +16,10 @@ interface Props {
 }
 
 export default function GoalsList({ proofState, selectedGoal, onSelectGoal, onRemovePremise }: Props) {
-  if (!proofState || !proofState.main_goal) {
+  const premises = proofState?.premises || [];
+  const hasGoal = Boolean(proofState?.main_goal);
+
+  if (!proofState || (!hasGoal && premises.length === 0)) {
     return (
       <Paper
         elevation={0}
@@ -39,7 +42,7 @@ export default function GoalsList({ proofState, selectedGoal, onSelectGoal, onRe
     );
   }
 
-  const goals = Object.values(proofState.goals);
+  const goals = hasGoal ? Object.values(proofState.goals) : [];
   const openGoals = goals.filter(g => !g.is_proven);
   const provenGoals = goals.filter(g => g.is_proven);
 
@@ -83,12 +86,12 @@ export default function GoalsList({ proofState, selectedGoal, onSelectGoal, onRe
         </Box>
       </Box>
 
-      {proofState.premises.length > 0 && (
+      {premises.length > 0 && (
         <Box sx={{ px: 1.35, py: 0.9, borderBottom: `1px dashed ${COLORS.line}` }}>
           <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: 0.8 }}>
             Premises
           </Typography>
-          {proofState.premises.map((p, i) => (
+          {premises.map((p, i) => (
             <Tooltip key={`${p}-${i}`} title="Remove premise" placement="right" arrow>
               <Typography
                 component="button"
@@ -132,78 +135,94 @@ export default function GoalsList({ proofState, selectedGoal, onSelectGoal, onRe
         </Box>
       )}
 
-      <List dense sx={{ py: 0.55 }}>
-        {goals.map((goal, idx) => (
-          <ListItemButton
-            key={goal.id}
-            selected={selectedGoal === goal.id}
-            onClick={() => !goal.is_proven && onSelectGoal(goal.id)}
-            disabled={goal.is_proven}
-            sx={{
-              mx: 0.7,
-              mb: 0.52,
-              borderRadius: RADII.control,
-              px: 1.05,
-              py: 0.7,
-              border: '1px solid transparent',
-              animation: `fade-rise 420ms cubic-bezier(0.16, 1, 0.3, 1) ${Math.min(idx * 22, 260)}ms both`,
-              '&.Mui-selected': {
-                bgcolor: 'rgba(191,232,212,0.1)',
-                borderColor: 'rgba(191,232,212,0.36)',
-              },
-              '&:hover': {
-                transform: 'translateY(-1px)',
-                bgcolor: COLORS.wash,
-                borderColor: COLORS.lineStrong,
-              },
-              opacity: goal.is_proven ? 0.62 : 1,
-              transition: 'transform 180ms ease, background-color 180ms ease, border-color 180ms ease, opacity 180ms ease',
-            }}
-          >
-            <ListItemIcon sx={{ minWidth: 26 }}>
-              {goal.is_proven
-                ? <CheckCircleIcon sx={{ fontSize: 16, color: COLORS.mint }} />
-                : <RadioButtonUncheckedIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
-              }
-            </ListItemIcon>
-            <ListItemText
-              primary={(
-                <Box>
-                  <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.63rem' }}>
-                    {goal.id} {goal.label && `- ${goal.label}`}
-                  </Typography>
-                  <Typography
-                    variant="body2"
-                    sx={{
-                      fontFamily: '"DM Mono", "JetBrains Mono", monospace',
-                      fontSize: '0.77rem',
-                      wordBreak: 'break-word',
-                      color: goal.is_proven ? COLORS.mint : 'text.primary',
-                    }}
-                  >
-                    {goal.formula}
-                  </Typography>
-                  {goal.rule_applied && (
-                    <Chip
-                      label={goal.rule_applied.replace(/_/g, ' ')}
-                      size="small"
+      {hasGoal ? (
+        <List dense sx={{ py: 0.55 }}>
+          {goals.map((goal, idx) => (
+            <ListItemButton
+              key={goal.id}
+              selected={selectedGoal === goal.id}
+              onClick={() => !goal.is_proven && onSelectGoal(goal.id)}
+              disabled={goal.is_proven}
+              sx={{
+                mx: 0.7,
+                mb: 0.52,
+                borderRadius: RADII.control,
+                px: 1.05,
+                py: 0.7,
+                border: '1px solid transparent',
+                animation: `fade-rise 420ms cubic-bezier(0.16, 1, 0.3, 1) ${Math.min(idx * 22, 260)}ms both`,
+                '&.Mui-selected': {
+                  bgcolor: 'rgba(191,232,212,0.1)',
+                  borderColor: 'rgba(191,232,212,0.36)',
+                },
+                '&:hover': {
+                  transform: 'translateY(-1px)',
+                  bgcolor: COLORS.wash,
+                  borderColor: COLORS.lineStrong,
+                },
+                opacity: goal.is_proven ? 0.62 : 1,
+                transition: 'transform 180ms ease, background-color 180ms ease, border-color 180ms ease, opacity 180ms ease',
+              }}
+            >
+              <ListItemIcon sx={{ minWidth: 26 }}>
+                {goal.is_proven
+                  ? <CheckCircleIcon sx={{ fontSize: 16, color: COLORS.mint }} />
+                  : <RadioButtonUncheckedIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
+                }
+              </ListItemIcon>
+              <ListItemText
+                primary={(
+                  <Box>
+                    <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.63rem' }}>
+                      {goal.id} {goal.label && `- ${goal.label}`}
+                    </Typography>
+                    <Typography
+                      variant="body2"
                       sx={{
-                        fontSize: '0.6rem',
-                        height: 17,
-                        mt: 0.35,
-                        border: '1px solid rgba(191,232,212,0.42)',
-                        color: COLORS.mint,
-                        bgcolor: 'rgba(191,232,212,0.08)',
+                        fontFamily: '"DM Mono", "JetBrains Mono", monospace',
+                        fontSize: '0.77rem',
+                        wordBreak: 'break-word',
+                        color: goal.is_proven ? COLORS.mint : 'text.primary',
                       }}
-                      variant="outlined"
-                    />
-                  )}
-                </Box>
-              )}
-            />
-          </ListItemButton>
-        ))}
-      </List>
+                    >
+                      {goal.formula}
+                    </Typography>
+                    {goal.rule_applied && (
+                      <Chip
+                        label={goal.rule_applied.replace(/_/g, ' ')}
+                        size="small"
+                        sx={{
+                          fontSize: '0.6rem',
+                          height: 17,
+                          mt: 0.35,
+                          border: '1px solid rgba(191,232,212,0.42)',
+                          color: COLORS.mint,
+                          bgcolor: 'rgba(191,232,212,0.08)',
+                        }}
+                        variant="outlined"
+                      />
+                    )}
+                  </Box>
+                )}
+              />
+            </ListItemButton>
+          ))}
+        </List>
+      ) : (
+        <Box
+          sx={{
+            flex: 1,
+            p: 2,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center' }}>
+            Set a goal when you are ready to start the proof.
+          </Typography>
+        </Box>
+      )}
     </Box>
   );
 }
