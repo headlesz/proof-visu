@@ -190,6 +190,23 @@ class ProofState:
             if not goal.is_proven:
                 goal.assumptions = self.dedupe_assumptions(list(goal.assumptions) + [formula])
 
+    def remove_premise(self, index: int) -> Optional[ASTNode]:
+        """Remove a premise by index and update open goal assumptions."""
+        if index < 0 or index >= len(self.premises):
+            return None
+
+        self.save_checkpoint()
+        removed = self.premises.pop(index)
+        still_available = any(str(p) == str(removed) for p in self.premises)
+        if not still_available:
+            for goal in self.goals.values():
+                if not goal.is_proven:
+                    goal.assumptions = [
+                        a for a in goal.assumptions
+                        if str(a) != str(removed)
+                    ]
+        return removed
+
     def mark_proven(self, goal_id: str, rule: str = ""):
         """Mark a goal as proven."""
         if goal_id in self.goals:

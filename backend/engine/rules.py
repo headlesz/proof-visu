@@ -233,7 +233,11 @@ class ImpliesElim(InferenceRule):
                     break
             if not imp:
                 for a in goal.assumptions:
-                    if isinstance(a, Implies):
+                    if (
+                        isinstance(a, Implies)
+                        and any(existing == a.left for existing in goal.assumptions)
+                        and not any(existing == a.right for existing in goal.assumptions)
+                    ):
                         imp = a
                         break
         if not imp or not isinstance(imp, Implies):

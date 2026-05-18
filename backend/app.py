@@ -88,6 +88,30 @@ def add_premise():
     return jsonify(result)
 
 
+@app.route('/api/remove_premise', methods=['POST'])
+def remove_premise():
+    """Remove a premise from context by index."""
+    data = request.get_json() or {}
+    session_id = data.get('session_id', 'default')
+    premise_index = data.get('premise_index', None)
+
+    if premise_index is None:
+        return jsonify({"success": False, "error": "premise_index is required"}), 400
+
+    try:
+        premise_index = int(premise_index)
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "error": "premise_index must be an integer"}), 400
+
+    engine = get_engine(session_id)
+    result = engine.remove_premise(premise_index)
+    logger.info(
+        f"Remove premise {premise_index}: "
+        f"{'ok' if result['success'] else result.get('error')}"
+    )
+    return jsonify(result)
+
+
 @app.route('/api/list_rules', methods=['GET'])
 def list_rules():
     """List applicable rules for a given goal."""

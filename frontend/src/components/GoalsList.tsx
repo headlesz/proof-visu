@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-  Box, Typography, List, ListItemButton, ListItemText, ListItemIcon, Chip, Paper,
+  Box, Typography, List, ListItemButton, ListItemText, ListItemIcon, Chip, Paper, Tooltip,
 } from '@mui/material';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import RadioButtonUncheckedIcon from '@mui/icons-material/RadioButtonUnchecked';
@@ -11,9 +11,10 @@ interface Props {
   proofState: ProofState | null;
   selectedGoal: string | null;
   onSelectGoal: (goalId: string) => void;
+  onRemovePremise: (premiseIndex: number) => void;
 }
 
-export default function GoalsList({ proofState, selectedGoal, onSelectGoal }: Props) {
+export default function GoalsList({ proofState, selectedGoal, onSelectGoal, onRemovePremise }: Props) {
   if (!proofState || !proofState.main_goal) {
     return (
       <Paper
@@ -87,19 +88,45 @@ export default function GoalsList({ proofState, selectedGoal, onSelectGoal }: Pr
             Premises
           </Typography>
           {proofState.premises.map((p, i) => (
-            <Typography
-              key={i}
-              variant="body2"
-              sx={{
-                fontFamily: '"DM Mono", "JetBrains Mono", monospace',
-                fontSize: '0.73rem',
-                mt: 0.35,
-                color: 'secondary.main',
-                opacity: 0.95,
-              }}
-            >
-              {p}
-            </Typography>
+            <Tooltip key={`${p}-${i}`} title="Remove premise" placement="right" arrow>
+              <Typography
+                component="button"
+                type="button"
+                variant="body2"
+                onClick={() => onRemovePremise(i)}
+                sx={{
+                  display: 'block',
+                  width: '100%',
+                  border: '1px solid transparent',
+                  borderRadius: RADII.control,
+                  mt: 0.35,
+                  px: 0.45,
+                  py: 0.32,
+                  bgcolor: 'transparent',
+                  fontFamily: '"DM Mono", "JetBrains Mono", monospace',
+                  fontSize: '0.73rem',
+                  lineHeight: 1.45,
+                  textAlign: 'left',
+                  wordBreak: 'break-word',
+                  color: 'secondary.main',
+                  opacity: 0.95,
+                  cursor: 'pointer',
+                  transition: 'background-color 160ms ease, border-color 160ms ease, color 160ms ease',
+                  '&:hover': {
+                    color: 'error.main',
+                    bgcolor: 'rgba(239,125,104,0.08)',
+                    borderColor: 'rgba(239,125,104,0.3)',
+                  },
+                  '&:focus-visible': {
+                    outline: 'none',
+                    borderColor: 'rgba(239,125,104,0.72)',
+                    boxShadow: '0 0 0 3px rgba(239,125,104,0.18)',
+                  },
+                }}
+              >
+                {p}
+              </Typography>
+            </Tooltip>
           ))}
         </Box>
       )}

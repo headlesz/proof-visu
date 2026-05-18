@@ -34,6 +34,12 @@ export const api = {
       body: JSON.stringify({ formula, session_id: sessionId }),
     }),
 
+  removePremise: (premiseIndex: number, sessionId = 'default') =>
+    apiCall('/remove_premise', {
+      method: 'POST',
+      body: JSON.stringify({ premise_index: premiseIndex, session_id: sessionId }),
+    }),
+
   listRules: (goalId: string, sessionId = 'default') =>
     apiCall(`/list_rules?goal_id=${goalId}&session_id=${sessionId}`),
 

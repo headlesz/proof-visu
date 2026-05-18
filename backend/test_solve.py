@@ -50,6 +50,36 @@ assert latex.find("\\textbf{Forward direction:}") < latex.find("\\textbf{Backwar
 assert "\\begin<class" not in latex
 print("latex_export [OK] structured biconditional proof export")
 
+e_premise = ProofEngine()
+assert e_premise.add_premise("p")["success"]
+assert e_premise.set_goal("q")["success"]
+state_with_premise = e_premise.get_state()
+assert state_with_premise["premises"] == ["p"]
+assert "p" in state_with_premise["goals"]["G1"]["assumptions"]
+removed = e_premise.remove_premise(0)
+assert removed["success"], removed
+state_without_premise = removed["state"]
+assert state_without_premise["premises"] == []
+assert "p" not in state_without_premise["goals"]["G1"]["assumptions"]
+print("remove_premise [OK] premise removed from context")
+
+e_chain = ProofEngine()
+assert e_chain.add_premise("p -> q")["success"]
+assert e_chain.add_premise("~r -> ~q")["success"]
+assert e_chain.add_premise("~r")["success"]
+assert e_chain.set_goal("~p")["success"]
+r_chain = e_chain.solve(200)
+assert r_chain["is_complete"], r_chain
+print("premise_chain [OK] derived ~p from manual premises")
+
+e_goal_chain = ProofEngine()
+assert e_goal_chain.add_premise("p → q")["success"]
+assert e_goal_chain.add_premise("¬r → ¬q")["success"]
+assert e_goal_chain.set_goal("¬r ⇒ ¬p")["success"]
+r_goal_chain = e_goal_chain.solve(200)
+assert r_goal_chain["is_complete"], r_goal_chain
+print("unicode_implies_chain [OK] parsed ⇒ and proved implication")
+
 # UI regression: if user manually takes a bad branch mid-proof, solve() should
 # still recover by re-solving from the theorem.
 e = ProofEngine()

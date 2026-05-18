@@ -177,13 +177,34 @@ function App() {
       if (result.success) {
         showMessage('Premise added', 'success');
         await refreshState();
+        if (selectedGoal) {
+          await refreshRules(selectedGoal);
+        }
       } else {
         showMessage(result.error, 'error');
       }
     } catch (e: any) {
       showMessage(e.message, 'error');
     }
-  }, [showMessage, refreshState]);
+  }, [selectedGoal, showMessage, refreshState, refreshRules]);
+
+  const handleRemovePremise = useCallback(async (premiseIndex: number) => {
+    try {
+      const result = await api.removePremise(premiseIndex);
+      if (result.success) {
+        setProofState(result.state);
+        showMessage('Premise removed', 'info');
+        await refreshState();
+        if (selectedGoal) {
+          await refreshRules(selectedGoal);
+        }
+      } else {
+        showMessage(result.error, 'error');
+      }
+    } catch (e: any) {
+      showMessage(e.message, 'error');
+    }
+  }, [selectedGoal, showMessage, refreshState, refreshRules]);
 
   const handleSelectGoal = useCallback((goalId: string) => {
     setSelectedGoal(goalId);
@@ -438,6 +459,7 @@ function App() {
               proofState={proofState}
               selectedGoal={selectedGoal}
               onSelectGoal={handleSelectGoal}
+              onRemovePremise={handleRemovePremise}
             />
             <RulesPanel
               rules={rules}

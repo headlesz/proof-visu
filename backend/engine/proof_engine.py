@@ -67,6 +67,18 @@ class ProofEngine:
             "state": self.state.to_dict(),
         }
 
+    def remove_premise(self, premise_index: int) -> dict:
+        """Remove a premise from the proof context."""
+        removed = self.state.remove_premise(premise_index)
+        if removed is None:
+            return {"success": False, "error": f"Premise index {premise_index} not found"}
+
+        return {
+            "success": True,
+            "removed_premise": str(removed),
+            "state": self.state.to_dict(),
+        }
+
     def list_rules(self, goal_id: str) -> dict:
         """List applicable rules for a given goal."""
         if goal_id not in self.state.goals:
