@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
   Box, TextField, Button, Paper, Typography, ToggleButtonGroup, ToggleButton,
   Chip, Tooltip,
@@ -33,6 +33,7 @@ const SYMBOL_SHORTCUTS = [
 export default function FormulaInput({ onSetGoal, onAddPremise }: Props) {
   const [formula, setFormula] = useState('');
   const [mode, setMode] = useState<'goal' | 'premise'>('goal');
+  const inputRef = useRef<HTMLInputElement | null>(null);
 
   const handleSubmit = useCallback(() => {
     if (!formula.trim()) return;
@@ -44,8 +45,23 @@ export default function FormulaInput({ onSetGoal, onAddPremise }: Props) {
   }, [formula, mode, onSetGoal, onAddPremise]);
 
   const insertSymbol = useCallback((symbol: string) => {
-    setFormula(prev => prev + symbol);
-  }, []);
+    const input = inputRef.current;
+    if (!input) {
+      setFormula(prev => prev + symbol);
+      return;
+    }
+
+    const start = input.selectionStart ?? formula.length;
+    const end = input.selectionEnd ?? start;
+    const nextFormula = `${formula.slice(0, start)}${symbol}${formula.slice(end)}`;
+    const nextCursor = start + symbol.length;
+
+    setFormula(nextFormula);
+    window.requestAnimationFrame(() => {
+      input.focus();
+      input.setSelectionRange(nextCursor, nextCursor);
+    });
+  }, [formula]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -131,6 +147,7 @@ export default function FormulaInput({ onSetGoal, onAddPremise }: Props) {
             size="small"
             placeholder={mode === 'goal' ? 'Try: A ∩ Aᶜ = ∅' : 'Enter premise formula'}
             value={formula}
+            inputRef={inputRef}
             onChange={e => setFormula(e.target.value)}
             onKeyDown={handleKeyDown}
             sx={{
@@ -167,6 +184,7 @@ export default function FormulaInput({ onSetGoal, onAddPremise }: Props) {
             <Tooltip key={s.symbol} title={s.title} arrow>
               <Chip
                 label={s.label}
+                onMouseDown={e => e.preventDefault()}
                 onClick={() => insertSymbol(s.symbol)}
                 sx={{
                   fontFamily: '"DM Mono", "JetBrains Mono", monospace',
