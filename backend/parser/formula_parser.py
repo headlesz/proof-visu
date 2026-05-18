@@ -66,7 +66,10 @@ GRAMMAR = r"""
     | set_op _INTERSECT unary -> intersect_expr
 
 ?unary: _COMPLEMENT unary -> complement_expr
-    | atom
+    | postfix
+
+?postfix: atom
+    | postfix _COMPLEMENT -> complement_expr
 
 ?atom: "(" formula ")"
     | _BOTTOM -> bottom

@@ -8,6 +8,7 @@ from parser.formula_parser import FormulaParser, ParseError
 from parser.ast_nodes import (
     ASTNode, And, Or, Not, Implies, Iff, Forall, Exists,
     Equals, Union, Intersect, ElementOf, Subset, Superset, Bottom,
+    Complement, NotElementOf, EmptySet,
 )
 from .proof_state import ProofState, GoalNode
 from .rules import (
@@ -296,6 +297,11 @@ class ProofEngine:
         if not self.state.main_goal:
             return {"success": False, "error": "No goal set"}
 
+        if self.state.steps:
+            recovered = self._recover_from_scratch(max_steps)
+            if recovered:
+                return recovered
+
         primary = self._attempt_solve(max_steps)
         if primary.get("is_complete"):
             return primary
@@ -304,10 +310,16 @@ class ProofEngine:
         # choosing one intro branch where the other was needed), run a fresh
         # solve from theorem + premises so "Solve" can still complete solvable
         # problems from the UI.
+        recovered = self._recover_from_scratch(max_steps)
+        if recovered:
+            return recovered
+
+        return primary
+
+    def _recover_from_scratch(self, max_steps: int = 200) -> Optional[dict]:
         theorem_goal = self.state.goals.get(self.state.main_goal)
         if theorem_goal is None:
-            return primary
-
+            return None
         scratch = ProofEngine()
         scratch.state.premises = copy.deepcopy(self.state.premises)
         scratch.state.set_main_goal(copy.deepcopy(theorem_goal.formula))
@@ -321,7 +333,7 @@ class ProofEngine:
             recovered["state"] = self.state.to_dict()
             return recovered
 
-        return primary
+        return None
 
     def _attempt_solve(self, max_steps: int = 200) -> dict:
         """Run one solving attempt from the current state."""
@@ -424,9 +436,11 @@ class ProofEngine:
         if str(f) in assumption_strs:
             return self._try_rule('assumption', goal_id, depth)
 
-        if isinstance(f, Bottom):
-            if self._try_rule('contradiction', goal_id, depth):
-                return True
+        if self._try_rule('emptyset_elim', goal_id, depth):
+            return True
+
+        if self._try_rule('contradiction', goal_id, depth):
+            return True
 
         # Phase 2: Determine structural rules
         structural = self._structural_rules(f, goal)
@@ -434,7 +448,8 @@ class ProofEngine:
         # Deterministic rules (exactly one way to decompose) — apply directly
         deterministic = {'and_intro', 'implies_intro', 'not_intro', 'iff_intro',
                          'forall_intro', 'exists_intro', 'equality_intro',
-                         'subset_intro', 'intersect_intro'}
+                         'subset_intro', 'intersect_intro', 'complement_intro',
+                         'not_complement_intro', 'not_element_intro'}
 
         for rule_name in structural:
             if rule_name in deterministic:
@@ -458,6 +473,16 @@ class ProofEngine:
                 if self._try_rule(rule_name, goal_id, depth):
                     return True
 
+        classical_candidates = self._classical_case_candidates(goal)
+        prefer_classical = bool(classical_candidates) and self._prefer_branching_before_intro(
+            goal, structural, assumption_strs
+        )
+        if prefer_classical:
+            for case_formula in classical_candidates:
+                if self._try_rule('classical_cases', goal_id, depth,
+                                  {"formula": str(case_formula)}):
+                    return True
+
         # Phase 4: Try structural choice rules (union_intro, or_intro)
         for rule_name in structural:
             if self._try_rule(rule_name, goal_id, depth):
@@ -467,6 +492,14 @@ class ProofEngine:
         for rule_name in branching:
             if self._try_rule(rule_name, goal_id, depth):
                 return True
+
+        # Phase 6: Classical fallback for tautologies that need excluded
+        # middle, such as (p → q) ↔ (¬p ∨ q).
+        if not prefer_classical:
+            for case_formula in classical_candidates:
+                if self._try_rule('classical_cases', goal_id, depth,
+                                  {"formula": str(case_formula)}):
+                    return True
 
         return False
 
@@ -502,6 +535,8 @@ class ProofEngine:
             return ['subset_intro']
         if isinstance(f, ElementOf):
             rhs = f.set_expr
+            if isinstance(rhs, Complement):
+                return ['complement_intro']
             if isinstance(rhs, Intersect):
                 return ['intersect_intro']
             if isinstance(rhs, Union):
@@ -517,6 +552,10 @@ class ProofEngine:
                 return ['union_intro_left', 'union_intro_right']
             # Simple element-of: no structural rule, try elims
             return []
+        if isinstance(f, NotElementOf):
+            if isinstance(f.set_expr, Complement):
+                return ['not_complement_intro']
+            return ['not_element_intro']
         return []
 
     def _useful_elim_rules(self, goal) -> List[str]:
@@ -525,6 +564,9 @@ class ProofEngine:
         assumption_strs = set(str(a) for a in goal.assumptions)
 
         for a in goal.assumptions:
+            if isinstance(a, ElementOf) and isinstance(a.set_expr, EmptySet):
+                if 'emptyset_elim' not in result:
+                    result.append('emptyset_elim')
             if isinstance(a, And):
                 if str(a.left) not in assumption_strs:
                     if 'and_elim_left' not in result:
@@ -532,6 +574,10 @@ class ProofEngine:
                 if str(a.right) not in assumption_strs:
                     if 'and_elim_right' not in result:
                         result.append('and_elim_right')
+            if isinstance(a, Or):
+                if str(a.left) not in assumption_strs or str(a.right) not in assumption_strs:
+                    if 'or_elim' not in result:
+                        result.append('or_elim')
             if isinstance(a, ElementOf):
                 rhs = a.set_expr
                 if isinstance(rhs, Intersect):
@@ -554,6 +600,23 @@ class ProofEngine:
                         if self._union_elim_useful(goal.formula, a):
                             if 'union_elim' not in result:
                                 result.append('union_elim')
+                if isinstance(rhs, Complement):
+                    derived = str(NotElementOf(a.element, rhs.operand))
+                    if derived not in assumption_strs:
+                        if 'complement_elim' not in result:
+                            result.append('complement_elim')
+                if str(NotElementOf(a.element, a.set_expr)) in assumption_strs:
+                    if 'contradiction' not in result:
+                        result.append('contradiction')
+            if isinstance(a, NotElementOf):
+                if isinstance(a.set_expr, Complement):
+                    derived = str(ElementOf(a.element, a.set_expr.operand))
+                    if derived not in assumption_strs:
+                        if 'not_complement_elim' not in result:
+                            result.append('not_complement_elim')
+                if str(ElementOf(a.element, a.set_expr)) in assumption_strs:
+                    if 'contradiction' not in result:
+                        result.append('contradiction')
             if isinstance(a, Implies):
                 # Check if the antecedent is in assumptions
                 if str(a.left) in assumption_strs and str(a.right) not in assumption_strs:
@@ -575,6 +638,8 @@ class ProofEngine:
         - The goal's element matches the union's element
         - Some elimination chain could derive the goal
         """
+        if isinstance(goal_formula, Bottom):
+            return True
         # If the goal isn't an ElementOf, union_elim probably doesn't help
         if not isinstance(goal_formula, ElementOf):
             return False
@@ -601,6 +666,7 @@ class ProofEngine:
 
         snapshot = self.state._snapshot()
         old_steps = self._solve_steps
+        old_failed_goal_depth = dict(self._failed_goal_depth)
 
         try:
             goal = self.state.goals[goal_id]
@@ -613,10 +679,12 @@ class ProofEngine:
 
             self.state._restore(snapshot)
             self._solve_steps = old_steps
+            self._failed_goal_depth = old_failed_goal_depth
             return False
         except Exception:
             self.state._restore(snapshot)
             self._solve_steps = old_steps
+            self._failed_goal_depth = old_failed_goal_depth
             return False
 
     def _goal_sig(self, goal) -> str:
@@ -651,7 +719,8 @@ class ProofEngine:
         structural = self._structural_rules(goal.formula, goal)
         deterministic = {'and_intro', 'implies_intro', 'not_intro', 'iff_intro',
                          'forall_intro', 'exists_intro', 'equality_intro',
-                         'subset_intro', 'intersect_intro'}
+                         'subset_intro', 'intersect_intro', 'complement_intro',
+                         'not_complement_intro', 'not_element_intro'}
         has_deterministic = any(r in deterministic for r in structural)
         has_structural = bool(structural)
         return (
@@ -680,6 +749,50 @@ class ProofEngine:
             return left_goal not in assumption_strs and right_goal not in assumption_strs
 
         return False
+
+    def _classical_case_candidates(self, goal: GoalNode) -> List[ASTNode]:
+        """Return formulas worth splitting on with excluded middle."""
+        f = goal.formula
+        assumption_strs = set(str(a) for a in goal.assumptions)
+        candidates: List[ASTNode] = []
+
+        if isinstance(f, Or):
+            for assumption in goal.assumptions:
+                if not isinstance(assumption, Implies):
+                    continue
+                if f.left == Not(assumption.left) and f.right == assumption.right:
+                    candidates.append(assumption.left)
+                if f.right == Not(assumption.left) and f.left == assumption.right:
+                    candidates.append(assumption.left)
+
+            if isinstance(f.left, Not):
+                candidates.append(f.left.operand)
+            if isinstance(f.right, Not):
+                candidates.append(f.right.operand)
+
+        if isinstance(f, ElementOf) and isinstance(f.set_expr, Union):
+            if isinstance(f.set_expr.left, Complement):
+                candidates.append(ElementOf(f.element, f.set_expr.left.operand))
+            if isinstance(f.set_expr.right, Complement):
+                candidates.append(ElementOf(f.element, f.set_expr.right.operand))
+
+        deduped: List[ASTNode] = []
+        seen = set()
+        for candidate in candidates:
+            sig = str(candidate)
+            if isinstance(candidate, ElementOf):
+                opposite_sig = str(NotElementOf(candidate.element, candidate.set_expr))
+            elif isinstance(candidate, NotElementOf):
+                opposite_sig = str(ElementOf(candidate.element, candidate.set_expr))
+            else:
+                opposite_sig = str(Not(candidate))
+            if sig in seen:
+                continue
+            if sig in assumption_strs or opposite_sig in assumption_strs:
+                continue
+            seen.add(sig)
+            deduped.append(candidate)
+        return deduped
 
     def _dedupe_all_goal_assumptions(self):
         """Normalize assumptions after each rule application."""

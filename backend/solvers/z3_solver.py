@@ -70,8 +70,12 @@ class Z3Solver:
             return self.ast_to_z3(node.left) != self.ast_to_z3(node.right)
         elif isinstance(node, Predicate):
             return self._get_bool_var(f"{node.name}_{'_'.join(str(a) for a in node.args)}")
+        elif isinstance(node, ElementOf) and isinstance(node.set_expr, Complement):
+            return z3.Not(self.ast_to_z3(ElementOf(node.element, node.set_expr.operand)))
         elif isinstance(node, ElementOf):
             return self._get_bool_var(f"{node.element}_in_{node.set_expr}")
+        elif isinstance(node, NotElementOf) and isinstance(node.set_expr, Complement):
+            return self.ast_to_z3(ElementOf(node.element, node.set_expr.operand))
         elif isinstance(node, NotElementOf):
             return z3.Not(self._get_bool_var(f"{node.element}_in_{node.set_expr}"))
         elif isinstance(node, Intersect):

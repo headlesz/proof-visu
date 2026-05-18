@@ -8,7 +8,7 @@ from parser.ast_nodes import (
     ASTNode, And, Or, Not, Implies, Iff, Forall, Exists,
     Equals, NotEquals, Union, Intersect, Complement,
     ElementOf, NotElementOf, Subset, Superset,
-    Variable, Constant, Bottom, Top, Predicate, Successor, Zero
+    Variable, Constant, Bottom, Top, EmptySet, Predicate, Successor, Zero
 )
 from .proof_state import ProofState, GoalNode
 
@@ -353,6 +353,22 @@ class Contradiction(InferenceRule):
                 return True
             if isinstance(a, Not) and a.operand in goal.assumptions:
                 return True
+            if isinstance(a, ElementOf):
+                if NotElementOf(a.element, a.set_expr) in goal.assumptions:
+                    return True
+            if isinstance(a, NotElementOf):
+                if ElementOf(a.element, a.set_expr) in goal.assumptions:
+                    return True
+                if isinstance(a.set_expr, Union):
+                    if ElementOf(a.element, a.set_expr.left) in goal.assumptions:
+                        return True
+                    if ElementOf(a.element, a.set_expr.right) in goal.assumptions:
+                        return True
+                if isinstance(a.set_expr, Intersect):
+                    left = ElementOf(a.element, a.set_expr.left)
+                    right = ElementOf(a.element, a.set_expr.right)
+                    if left in goal.assumptions and right in goal.assumptions:
+                        return True
         return False
 
     def apply(self, state, goal, params=None):
@@ -369,7 +385,84 @@ class Contradiction(InferenceRule):
                 state.add_step(self.name, goal.id, [], goal.formula,
                                note=f"Contradiction: {a.operand} and {a}")
                 return []
+            if isinstance(a, ElementOf) and NotElementOf(a.element, a.set_expr) in goal.assumptions:
+                state.save_checkpoint()
+                state.mark_proven(goal.id, self.name)
+                state.add_step(self.name, goal.id, [], goal.formula,
+                               note=f"Contradiction: {a} and {NotElementOf(a.element, a.set_expr)}")
+                return []
+            if isinstance(a, NotElementOf) and ElementOf(a.element, a.set_expr) in goal.assumptions:
+                state.save_checkpoint()
+                state.mark_proven(goal.id, self.name)
+                state.add_step(self.name, goal.id, [], goal.formula,
+                               note=f"Contradiction: {ElementOf(a.element, a.set_expr)} and {a}")
+                return []
+            if isinstance(a, NotElementOf) and isinstance(a.set_expr, Union):
+                left = ElementOf(a.element, a.set_expr.left)
+                right = ElementOf(a.element, a.set_expr.right)
+                if left in goal.assumptions:
+                    state.save_checkpoint()
+                    state.mark_proven(goal.id, self.name)
+                    state.add_step(self.name, goal.id, [], goal.formula,
+                                   note=f"Contradiction: {left} implies membership in {a.set_expr}, but {a}")
+                    return []
+                if right in goal.assumptions:
+                    state.save_checkpoint()
+                    state.mark_proven(goal.id, self.name)
+                    state.add_step(self.name, goal.id, [], goal.formula,
+                                   note=f"Contradiction: {right} implies membership in {a.set_expr}, but {a}")
+                    return []
+            if isinstance(a, NotElementOf) and isinstance(a.set_expr, Intersect):
+                left = ElementOf(a.element, a.set_expr.left)
+                right = ElementOf(a.element, a.set_expr.right)
+                if left in goal.assumptions and right in goal.assumptions:
+                    state.save_checkpoint()
+                    state.mark_proven(goal.id, self.name)
+                    state.add_step(self.name, goal.id, [], goal.formula,
+                                   note=f"Contradiction: {left} and {right} imply membership in {a.set_expr}, but {a}")
+                    return []
         raise RuleError("No contradiction found in assumptions")
+
+
+class ClassicalCases(InferenceRule):
+    name = "classical_cases"
+    description = "Classical case split: To prove a goal, prove it assuming A and assuming ¬A."
+    category = "propositional"
+
+    def is_applicable(self, state, goal, params=None):
+        p = params or {}
+        return bool(p.get("formula") or p.get("case_formula"))
+
+    def apply(self, state, goal, params=None):
+        p = params or {}
+        formula_param = p.get("formula") or p.get("case_formula")
+        if not formula_param:
+            raise RuleError("classical_cases requires a formula parameter")
+
+        if isinstance(formula_param, ASTNode):
+            case_formula = formula_param
+        else:
+            from parser import FormulaParser
+            parser = FormulaParser()
+            case_formula = parser.parse(str(formula_param))
+
+        if isinstance(case_formula, ElementOf):
+            opposite = NotElementOf(case_formula.element, case_formula.set_expr)
+        elif isinstance(case_formula, NotElementOf):
+            opposite = ElementOf(case_formula.element, case_formula.set_expr)
+        else:
+            opposite = Not(case_formula)
+
+        state.save_checkpoint()
+        g1 = state.add_goal(goal.formula, list(goal.assumptions) + [case_formula],
+                            goal.id, f"Case: {case_formula}")
+        g2 = state.add_goal(goal.formula, list(goal.assumptions) + [opposite],
+                            goal.id, f"Case: {opposite}")
+        state.mark_proven(goal.id, self.name)
+        state.add_step(self.name, goal.id, [], goal.formula, [g1.id, g2.id],
+                       f"Classical case split on {case_formula}",
+                       params={"formula": str(case_formula)})
+        return [g1.id, g2.id]
 
 
 # === Quantifier Rules ===
@@ -657,6 +750,170 @@ class UnionElim(InferenceRule):
         return [g1.id, g2.id]
 
 
+class ComplementIntro(InferenceRule):
+    name = "complement_intro"
+    description = "Complement Introduction: To prove x ∈ Aᶜ, prove x ∉ A."
+    category = "set_theory"
+
+    def is_applicable(self, state, goal, params=None):
+        return isinstance(goal.formula, ElementOf) and isinstance(goal.formula.set_expr, Complement)
+
+    def apply(self, state, goal, params=None):
+        f = goal.formula
+        if not (isinstance(f, ElementOf) and isinstance(f.set_expr, Complement)):
+            raise RuleError("Goal is not of the form x ∈ Aᶜ")
+        state.save_checkpoint()
+        target = NotElementOf(f.element, f.set_expr.operand)
+        g = state.add_goal(target, list(goal.assumptions), goal.id,
+                           f"Prove {f.element} ∉ {f.set_expr.operand}")
+        state.mark_proven(goal.id, self.name)
+        state.add_step(self.name, goal.id, [], f, [g.id],
+                       f"Use complement definition: prove {target}")
+        return [g.id]
+
+
+class ComplementElim(InferenceRule):
+    name = "complement_elim"
+    description = "Complement Elimination: From x ∈ Aᶜ, derive x ∉ A."
+    category = "set_theory"
+
+    def is_applicable(self, state, goal, params=None):
+        assumption_strs = {str(a) for a in goal.assumptions}
+        for a in goal.assumptions:
+            if isinstance(a, ElementOf) and isinstance(a.set_expr, Complement):
+                derived = str(NotElementOf(a.element, a.set_expr.operand))
+                if derived not in assumption_strs:
+                    return True
+        return False
+
+    def apply(self, state, goal, params=None):
+        source_idx = (params or {}).get("source_idx", None)
+        source = None
+        assumption_strs = {str(a) for a in goal.assumptions}
+        if source_idx is not None:
+            source = goal.assumptions[source_idx]
+        else:
+            for a in goal.assumptions:
+                if isinstance(a, ElementOf) and isinstance(a.set_expr, Complement):
+                    derived = str(NotElementOf(a.element, a.set_expr.operand))
+                    if derived not in assumption_strs:
+                        source = a
+                        break
+        if not (source and isinstance(source, ElementOf) and isinstance(source.set_expr, Complement)):
+            raise RuleError("No complement membership found")
+        state.save_checkpoint()
+        derived = NotElementOf(source.element, source.set_expr.operand)
+        goal.assumptions = list(goal.assumptions) + [derived]
+        state.add_step(self.name, goal.id, [], derived,
+                       note=f"From {source}, derive {derived}")
+        return []
+
+
+class NotComplementIntro(InferenceRule):
+    name = "not_complement_intro"
+    description = "Complement Nonmembership: To prove x ∉ Aᶜ, prove x ∈ A."
+    category = "set_theory"
+
+    def is_applicable(self, state, goal, params=None):
+        return isinstance(goal.formula, NotElementOf) and isinstance(goal.formula.set_expr, Complement)
+
+    def apply(self, state, goal, params=None):
+        f = goal.formula
+        if not (isinstance(f, NotElementOf) and isinstance(f.set_expr, Complement)):
+            raise RuleError("Goal is not of the form x ∉ Aᶜ")
+        state.save_checkpoint()
+        target = ElementOf(f.element, f.set_expr.operand)
+        g = state.add_goal(target, list(goal.assumptions), goal.id,
+                           f"Prove {f.element} ∈ {f.set_expr.operand}")
+        state.mark_proven(goal.id, self.name)
+        state.add_step(self.name, goal.id, [], f, [g.id],
+                       f"Use complement definition: prove {target}")
+        return [g.id]
+
+
+class NotComplementElim(InferenceRule):
+    name = "not_complement_elim"
+    description = "Complement Nonmembership Elimination: From x ∉ Aᶜ, derive x ∈ A."
+    category = "set_theory"
+
+    def is_applicable(self, state, goal, params=None):
+        assumption_strs = {str(a) for a in goal.assumptions}
+        for a in goal.assumptions:
+            if isinstance(a, NotElementOf) and isinstance(a.set_expr, Complement):
+                derived = str(ElementOf(a.element, a.set_expr.operand))
+                if derived not in assumption_strs:
+                    return True
+        return False
+
+    def apply(self, state, goal, params=None):
+        source_idx = (params or {}).get("source_idx", None)
+        source = None
+        assumption_strs = {str(a) for a in goal.assumptions}
+        if source_idx is not None:
+            source = goal.assumptions[source_idx]
+        else:
+            for a in goal.assumptions:
+                if isinstance(a, NotElementOf) and isinstance(a.set_expr, Complement):
+                    derived = str(ElementOf(a.element, a.set_expr.operand))
+                    if derived not in assumption_strs:
+                        source = a
+                        break
+        if not (source and isinstance(source, NotElementOf) and isinstance(source.set_expr, Complement)):
+            raise RuleError("No complement nonmembership found")
+        state.save_checkpoint()
+        derived = ElementOf(source.element, source.set_expr.operand)
+        goal.assumptions = list(goal.assumptions) + [derived]
+        state.add_step(self.name, goal.id, [], derived,
+                       note=f"From {source}, derive {derived}")
+        return []
+
+
+class NotElementIntro(InferenceRule):
+    name = "not_element_intro"
+    description = "∉-Introduction: To prove x ∉ A, assume x ∈ A and derive contradiction."
+    category = "set_theory"
+
+    def is_applicable(self, state, goal, params=None):
+        return isinstance(goal.formula, NotElementOf)
+
+    def apply(self, state, goal, params=None):
+        f = goal.formula
+        if not isinstance(f, NotElementOf):
+            raise RuleError("Goal is not a nonmembership statement")
+        state.save_checkpoint()
+        assumption = ElementOf(f.element, f.set_expr)
+        g = state.add_goal(Bottom(), list(goal.assumptions) + [assumption],
+                           goal.id, f"Assume {assumption}, derive contradiction")
+        state.mark_proven(goal.id, self.name)
+        state.add_step(self.name, goal.id, [], f, [g.id],
+                       f"Assume {assumption} for contradiction")
+        return [g.id]
+
+
+class EmptySetElim(InferenceRule):
+    name = "emptyset_elim"
+    description = "Empty Set Elimination: From x ∈ ∅, derive any goal."
+    category = "set_theory"
+
+    def is_applicable(self, state, goal, params=None):
+        return any(isinstance(a, ElementOf) and isinstance(a.set_expr, EmptySet)
+                   for a in goal.assumptions)
+
+    def apply(self, state, goal, params=None):
+        source = None
+        for a in goal.assumptions:
+            if isinstance(a, ElementOf) and isinstance(a.set_expr, EmptySet):
+                source = a
+                break
+        if not source:
+            raise RuleError("No empty-set membership found")
+        state.save_checkpoint()
+        state.mark_proven(goal.id, self.name)
+        state.add_step(self.name, goal.id, [], goal.formula,
+                       note=f"Empty-set elimination from {source}")
+        return []
+
+
 class SubsetIntro(InferenceRule):
     name = "subset_intro"
     description = "⊆-Introduction: To prove A ⊆ B, assume x ∈ A and prove x ∈ B."
@@ -755,6 +1012,7 @@ ALL_RULES = [
     NotIntro(),
     NotElim(),
     IffIntro(),
+    ClassicalCases(),
     # Quantifier
     ForallIntro(),
     ForallElim(),
@@ -766,6 +1024,12 @@ ALL_RULES = [
     UnionIntroLeft(),
     UnionIntroRight(),
     UnionElim(),
+    ComplementIntro(),
+    ComplementElim(),
+    NotComplementIntro(),
+    NotComplementElim(),
+    NotElementIntro(),
+    EmptySetElim(),
     SubsetIntro(),
     EqualityIntro(),
     # Induction

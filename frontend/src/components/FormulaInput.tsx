@@ -21,9 +21,11 @@ const SYMBOL_SHORTCUTS = [
   { label: '∀', symbol: '∀', title: 'For all' },
   { label: '∃', symbol: '∃', title: 'Exists' },
   { label: '∈', symbol: '∈', title: 'Element of' },
+  { label: '∉', symbol: '∉', title: 'Not element of' },
   { label: '⊆', symbol: '⊆', title: 'Subset' },
   { label: '∩', symbol: '∩', title: 'Intersect' },
   { label: '∪', symbol: '∪', title: 'Union' },
+  { label: 'ᶜ', symbol: 'ᶜ', title: 'Complement' },
   { label: '⊥', symbol: '⊥', title: 'Bottom (False)' },
   { label: '⊤', symbol: '⊤', title: 'Top (True)' },
 ];
@@ -127,7 +129,7 @@ export default function FormulaInput({ onSetGoal, onAddPremise }: Props) {
           <TextField
             fullWidth
             size="small"
-            placeholder={mode === 'goal' ? 'Try: (A ∪ (B ∩ C)) = ((A ∪ B) ∩ (A ∪ C))' : 'Enter premise formula'}
+            placeholder={mode === 'goal' ? 'Try: A ∩ Aᶜ = ∅' : 'Enter premise formula'}
             value={formula}
             onChange={e => setFormula(e.target.value)}
             onKeyDown={handleKeyDown}

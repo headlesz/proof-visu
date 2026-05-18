@@ -13,11 +13,15 @@ tests = [
     ("identity", "p -> p"),
     ("commut", "(p && q) -> (q && p)"),
     ("contra", "(p -> q) -> (~q -> ~p)"),
+    ("impl_or", "p -> q <-> ~p or q"),
     ("simp", "(p && q) -> p"),
     ("set_eq", "A = A"),
     ("distrib_fwd", "(A union (B cap C)) subset ((A union B) cap (A union C))"),
     ("distrib_rev", "((A union B) cap (A union C)) subset (A union (B cap C))"),
     ("distrib", "A union (B cap C) = (A union B) cap (A union C)"),
+    ("comp_empty", "A cap Aᶜ = emptyset"),
+    ("demorgan_union", "(A union B)ᶜ = (Aᶜ cap Bᶜ)"),
+    ("demorgan_inter", "(A cap B)ᶜ = (Aᶜ union Bᶜ)"),
 ]
 
 for name, formula in tests:
