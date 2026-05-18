@@ -6,6 +6,7 @@ import {
 import LightbulbIcon from '@mui/icons-material/Lightbulb';
 import { HintResult } from '../types';
 import { RADII } from '../theme/radii';
+import { COLORS } from '../theme/colors';
 
 interface Props {
   open: boolean;
@@ -27,8 +28,8 @@ export default function HintDialog({ open, hint, onClose, onApply }: Props) {
             borderRadius: RADII.icon,
             display: 'grid',
             placeItems: 'center',
-            bgcolor: 'rgba(244,162,97,0.16)',
-            border: '1px solid rgba(244,162,97,0.4)',
+            bgcolor: 'rgba(244,230,168,0.13)',
+            border: '1px solid rgba(244,230,168,0.38)',
           }}
         >
           <LightbulbIcon sx={{ color: 'warning.main', fontSize: 16 }} />
@@ -52,15 +53,15 @@ export default function HintDialog({ open, hint, onClose, onApply }: Props) {
               mb: 2,
               p: 1.1,
               borderRadius: RADII.panel,
-              border: '1px solid rgba(244,162,97,0.35)',
-              bgcolor: 'rgba(244,162,97,0.09)',
+              border: '1px solid rgba(220,214,255,0.32)',
+              bgcolor: 'rgba(255,255,255,0.04)',
             }}
           >
             <Chip
               label={hint.suggested_rule.name.replace(/_/g, ' ')}
               sx={{
                 fontFamily: '"DM Mono", "JetBrains Mono", monospace',
-                color: '#102027',
+                color: COLORS.black,
                 bgcolor: 'primary.main',
               }}
             />
@@ -83,8 +84,8 @@ export default function HintDialog({ open, hint, onClose, onApply }: Props) {
             onClick={() => onApply(hint.suggested_rule!.name)}
             sx={{
               bgcolor: 'primary.main',
-              color: '#102027',
-              '&:hover': { bgcolor: '#f7b47d' },
+              color: COLORS.black,
+              '&:hover': { bgcolor: COLORS.white },
             }}
           >
             Apply Suggested Rule

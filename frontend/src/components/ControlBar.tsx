@@ -9,6 +9,7 @@ import DescriptionIcon from '@mui/icons-material/Description';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import { RADII } from '../theme/radii';
+import { COLORS } from '../theme/colors';
 
 interface Props {
   onUndo: () => void;
@@ -42,7 +43,7 @@ export default function ControlBar({
         px: { xs: 1, md: 1.3 },
         py: 0.95,
         borderRadius: RADII.shell,
-        borderColor: 'rgba(244,162,97,0.2)',
+        borderColor: COLORS.lineStrong,
         flexWrap: 'wrap',
       }}
     >
@@ -61,7 +62,7 @@ export default function ControlBar({
         </span>
       </Tooltip>
 
-      <Divider orientation="vertical" flexItem sx={{ mx: 0.4, borderColor: 'rgba(183,200,202,0.2)' }} />
+      <Divider orientation="vertical" flexItem sx={{ mx: 0.4, borderColor: COLORS.line }} />
 
       <Tooltip title="Check if proof is complete">
         <span>
@@ -90,10 +91,10 @@ export default function ControlBar({
             sx={{
               ...baseBtnSx,
               bgcolor: 'secondary.main',
-              color: '#0f2224',
-              boxShadow: '0 10px 22px rgba(42,157,143,0.3)',
+              color: COLORS.black,
+              boxShadow: '0 10px 22px rgba(191,232,212,0.14)',
               '&:hover': {
-                bgcolor: '#38b2a4',
+                bgcolor: COLORS.white,
               },
             }}
           >
@@ -117,7 +118,7 @@ export default function ControlBar({
         </span>
       </Tooltip>
 
-      <Divider orientation="vertical" flexItem sx={{ mx: 0.4, borderColor: 'rgba(183,200,202,0.2)' }} />
+      <Divider orientation="vertical" flexItem sx={{ mx: 0.4, borderColor: COLORS.line }} />
 
       <Tooltip title="Export as JSON">
         <span>

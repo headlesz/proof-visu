@@ -6,6 +6,7 @@ import {
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import DownloadIcon from '@mui/icons-material/Download';
 import { RADII } from '../theme/radii';
+import { COLORS } from '../theme/colors';
 
 interface Props {
   open: boolean;
@@ -39,12 +40,12 @@ export default function ExportDialog({ open, content, format, onClose }: Props) 
       <DialogContent>
         <Box
           sx={{
-            bgcolor: 'rgba(8,16,20,0.82)',
+            bgcolor: 'rgba(0,0,0,0.54)',
             borderRadius: RADII.panel,
             p: 1.5,
             maxHeight: 400,
             overflow: 'auto',
-            border: '1px solid rgba(183,200,202,0.22)',
+            border: `1px solid ${COLORS.line}`,
           }}
         >
           <Typography
@@ -55,7 +56,7 @@ export default function ExportDialog({ open, content, format, onClose }: Props) 
               whiteSpace: 'pre-wrap',
               wordBreak: 'break-word',
               m: 0,
-              color: '#cfe1e2',
+              color: 'text.primary',
             }}
           >
             {content}
@@ -73,8 +74,8 @@ export default function ExportDialog({ open, content, format, onClose }: Props) 
           variant="contained"
           sx={{
             bgcolor: 'secondary.main',
-            color: '#102027',
-            '&:hover': { bgcolor: '#38b2a4' },
+            color: COLORS.black,
+            '&:hover': { bgcolor: COLORS.white },
           }}
         >
           Download

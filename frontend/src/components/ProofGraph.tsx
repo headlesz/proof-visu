@@ -4,6 +4,7 @@ import cytoscape from 'cytoscape';
 import dagre from 'cytoscape-dagre';
 import { GraphData } from '../types';
 import { RADII } from '../theme/radii';
+import { COLORS } from '../theme/colors';
 
 cytoscape.use(dagre);
 
@@ -22,17 +23,17 @@ const CYTOSCAPE_STYLE: any[] = [
       'text-max-width': '188px',
       'font-size': '10.8px',
       'font-family': '"DM Mono", "JetBrains Mono", monospace',
-      color: '#f4f1e8',
+      color: COLORS.white,
       'text-valign': 'center',
       'text-halign': 'center',
-      'background-color': '#18323b',
+      'background-color': COLORS.ink,
       'border-width': 1.8,
-      'border-color': 'rgba(183,200,202,0.65)',
+      'border-color': 'rgba(255,255,255,0.55)',
       shape: 'roundrectangle',
       width: 'label',
       height: 'label',
       padding: '13px',
-      'text-background-color': 'rgba(16,32,39,0.56)',
+      'text-background-color': 'rgba(0,0,0,0.52)',
       'text-background-opacity': 0.2,
       'text-background-padding': '2px',
     },
@@ -40,32 +41,31 @@ const CYTOSCAPE_STYLE: any[] = [
   {
     selector: 'node.open',
     style: {
-      'border-color': '#f4a261',
-      'background-color': '#30251c',
-      color: '#f6d4b4',
+      'border-color': COLORS.butter,
+      'background-color': '#1b1a14',
+      color: COLORS.butter,
     },
   },
   {
     selector: 'node.proven',
     style: {
-      'border-color': '#7dd3a7',
-      'background-color': '#173128',
-      color: '#bce9d1',
+      'border-color': COLORS.mint,
+      'background-color': '#121d18',
+      color: COLORS.mint,
     },
   },
   {
     selector: 'node.main',
     style: {
       'border-width': 2.6,
-      'border-color': '#2a9d8f',
+      'border-color': COLORS.lavender,
     },
   },
   {
     selector: 'node:selected',
     style: {
-      'border-color': '#2a9d8f',
+      'border-color': '#ffb87a',
       'border-width': 3,
-      'background-color': '#123337',
       'overlay-opacity': 0,
     },
   },
@@ -73,19 +73,19 @@ const CYTOSCAPE_STYLE: any[] = [
     selector: 'edge',
     style: {
       width: 1.9,
-      'line-color': 'rgba(167,187,192,0.58)',
-      'target-arrow-color': 'rgba(167,187,192,0.58)',
+      'line-color': 'rgba(255,255,255,0.42)',
+      'target-arrow-color': 'rgba(255,255,255,0.42)',
       'target-arrow-shape': 'triangle',
       'curve-style': 'bezier',
       label: 'data(label)',
       'font-size': '11px',
       'font-weight': 700,
       'font-family': '"DM Mono", "JetBrains Mono", monospace',
-      color: '#f4f1e8',
+      color: COLORS.white,
       'text-outline-width': 2,
-      'text-outline-color': '#081116',
+      'text-outline-color': COLORS.black,
       'text-rotation': 'autorotate',
-      'text-background-color': '#081116',
+      'text-background-color': COLORS.black,
       'text-background-opacity': 0.85,
       'text-background-padding': '4px',
     },
@@ -174,9 +174,8 @@ export default function ProofGraph({ graphData, selectedGoal, onSelectGoal }: Pr
         position: 'relative',
         borderRadius: RADII.panel,
         overflow: 'hidden',
-        border: '1px solid rgba(183,200,202,0.2)',
-        background:
-          'linear-gradient(145deg, rgba(14,28,33,0.95), rgba(16,32,39,0.88))',
+        border: `1px solid ${COLORS.line}`,
+        background: 'linear-gradient(145deg, rgba(18,18,18,0.96), rgba(7,7,7,0.92))',
       }}
     >
       <Box

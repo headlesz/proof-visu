@@ -24,22 +24,23 @@ import ExportDialog from './components/ExportDialog';
 import { api } from './services/api';
 import { ProofState, RuleInfo, HintResult, GraphData } from './types';
 import { RADII } from './theme/radii';
+import { COLORS } from './theme/colors';
 
 const theme = createTheme({
   palette: {
     mode: 'dark',
-    primary: { main: '#f4a261' },
-    secondary: { main: '#2a9d8f' },
-    success: { main: '#7dd3a7' },
-    warning: { main: '#f6c177' },
-    error: { main: '#ef7d68' },
+    primary: { main: COLORS.lavender, contrastText: COLORS.black },
+    secondary: { main: COLORS.mint, contrastText: COLORS.black },
+    success: { main: COLORS.mint, contrastText: COLORS.black },
+    warning: { main: COLORS.butter, contrastText: COLORS.black },
+    error: { main: COLORS.blush, contrastText: COLORS.black },
     background: {
-      default: '#0b1418',
-      paper: '#102027',
+      default: COLORS.black,
+      paper: COLORS.ink,
     },
     text: {
-      primary: '#f4f1e8',
-      secondary: '#b7c8ca',
+      primary: COLORS.white,
+      secondary: COLORS.muted,
     },
   },
   typography: {
@@ -58,9 +59,9 @@ const theme = createTheme({
     MuiPaper: {
       styleOverrides: {
         root: {
-          backgroundImage: 'linear-gradient(145deg, rgba(255,255,255,0.05), rgba(255,255,255,0.01))',
-          border: '1px solid rgba(244, 162, 97, 0.18)',
-          boxShadow: '0 18px 42px rgba(0,0,0,0.25)',
+          backgroundImage: 'linear-gradient(145deg, rgba(255,255,255,0.055), rgba(255,255,255,0.018))',
+          border: `1px solid ${COLORS.line}`,
+          boxShadow: '0 18px 42px rgba(0,0,0,0.42)',
           backdropFilter: 'blur(10px)',
           transition: 'transform 240ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 240ms ease, border-color 240ms ease',
         },
@@ -91,7 +92,7 @@ const theme = createTheme({
           borderRadius: RADII.control,
           transition: 'box-shadow 200ms ease, border-color 200ms ease',
           '&.Mui-focused': {
-            boxShadow: '0 0 0 3px rgba(244, 162, 97, 0.2)',
+            boxShadow: '0 0 0 3px rgba(220, 214, 255, 0.2)',
           },
         },
       },
@@ -100,7 +101,7 @@ const theme = createTheme({
       styleOverrides: {
         paper: {
           borderRadius: RADII.shell,
-          backgroundImage: 'linear-gradient(150deg, rgba(27,45,53,0.95), rgba(16,32,39,0.95))',
+          backgroundImage: 'linear-gradient(150deg, rgba(28,28,28,0.98), rgba(12,12,12,0.98))',
         },
       },
     },
@@ -368,9 +369,6 @@ function App() {
           overflow: 'hidden',
         }}
       >
-        <Box className="ambient-orb orb-a" />
-        <Box className="ambient-orb orb-b" />
-
         <Paper
           className="flow-panel"
           sx={{
@@ -385,7 +383,7 @@ function App() {
             sx={{
               position: 'absolute',
               inset: 0,
-              background: 'linear-gradient(120deg, rgba(244,162,97,0.08), rgba(42,157,143,0.06))',
+              background: 'linear-gradient(120deg, rgba(255,255,255,0.08), rgba(220,214,255,0.055))',
               pointerEvents: 'none',
             }}
           />
@@ -398,8 +396,8 @@ function App() {
                 borderRadius: RADII.control,
                 display: 'grid',
                 placeItems: 'center',
-                bgcolor: 'rgba(42,157,143,0.18)',
-                border: '1px solid rgba(42,157,143,0.45)',
+                bgcolor: 'rgba(191,232,212,0.14)',
+                border: '1px solid rgba(191,232,212,0.42)',
               }}
             >
               <AccountTreeIcon sx={{ color: 'secondary.main', fontSize: 20 }} />
@@ -419,8 +417,8 @@ function App() {
                 sx={{
                   fontSize: '0.74rem',
                   px: 1,
-                  border: '1px solid rgba(125,211,167,0.5)',
-                  bgcolor: 'rgba(125,211,167,0.14)',
+                  border: '1px solid rgba(191,232,212,0.48)',
+                  bgcolor: 'rgba(191,232,212,0.14)',
                 }}
               />
             )}
@@ -452,7 +450,7 @@ function App() {
               display: 'flex',
               flexDirection: 'column',
               overflow: 'hidden',
-              borderColor: 'rgba(244, 162, 97, 0.24)',
+              borderColor: COLORS.lineStrong,
             }}
           >
             <GoalsList
@@ -477,7 +475,7 @@ function App() {
               display: 'flex',
               flexDirection: 'column',
               gap: 1.2,
-              borderColor: 'rgba(42, 157, 143, 0.26)',
+              borderColor: COLORS.lineStrong,
             }}
           >
             <Box sx={{ flex: 2.1, minHeight: 220, borderRadius: RADII.panel, overflow: 'hidden' }}>
@@ -537,7 +535,7 @@ function App() {
             sx={{
               width: '100%',
               borderRadius: RADII.control,
-              border: '1px solid rgba(255,255,255,0.2)',
+              border: `1px solid ${COLORS.lineStrong}`,
               backdropFilter: 'blur(8px)',
             }}
           >

@@ -6,6 +6,7 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import RadioButtonUncheckedIcon from '@mui/icons-material/RadioButtonUnchecked';
 import { ProofState } from '../types';
 import { RADII } from '../theme/radii';
+import { COLORS } from '../theme/colors';
 
 interface Props {
   proofState: ProofState | null;
@@ -43,8 +44,8 @@ export default function GoalsList({ proofState, selectedGoal, onSelectGoal, onRe
   const provenGoals = goals.filter(g => g.is_proven);
 
   return (
-    <Box sx={{ flex: 1, overflow: 'auto', minHeight: 0, borderBottom: '1px solid rgba(183,200,202,0.15)' }}>
-      <Box sx={{ px: 1.35, py: 1.05, borderBottom: '1px solid rgba(183,200,202,0.15)' }}>
+    <Box sx={{ flex: 1, overflow: 'auto', minHeight: 0, borderBottom: `1px solid ${COLORS.line}` }}>
+      <Box sx={{ px: 1.35, py: 1.05, borderBottom: `1px solid ${COLORS.line}` }}>
         <Typography
           variant="subtitle2"
           sx={{
@@ -63,9 +64,9 @@ export default function GoalsList({ proofState, selectedGoal, onSelectGoal, onRe
             sx={{
               fontSize: '0.67rem',
               height: 22,
-              color: '#0f1f24',
+              color: COLORS.black,
               bgcolor: 'warning.main',
-              border: '1px solid rgba(246,193,119,0.6)',
+              border: '1px solid rgba(244,230,168,0.55)',
             }}
           />
           <Chip
@@ -74,16 +75,16 @@ export default function GoalsList({ proofState, selectedGoal, onSelectGoal, onRe
             sx={{
               fontSize: '0.67rem',
               height: 22,
-              color: '#0f1f24',
+              color: COLORS.black,
               bgcolor: 'success.main',
-              border: '1px solid rgba(125,211,167,0.62)',
+              border: '1px solid rgba(191,232,212,0.58)',
             }}
           />
         </Box>
       </Box>
 
       {proofState.premises.length > 0 && (
-        <Box sx={{ px: 1.35, py: 0.9, borderBottom: '1px dashed rgba(183,200,202,0.18)' }}>
+        <Box sx={{ px: 1.35, py: 0.9, borderBottom: `1px dashed ${COLORS.line}` }}>
           <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: 0.8 }}>
             Premises
           </Typography>
@@ -114,13 +115,13 @@ export default function GoalsList({ proofState, selectedGoal, onSelectGoal, onRe
                   transition: 'background-color 160ms ease, border-color 160ms ease, color 160ms ease',
                   '&:hover': {
                     color: 'error.main',
-                    bgcolor: 'rgba(239,125,104,0.08)',
-                    borderColor: 'rgba(239,125,104,0.3)',
+                    bgcolor: 'rgba(244,184,184,0.08)',
+                    borderColor: 'rgba(244,184,184,0.32)',
                   },
                   '&:focus-visible': {
                     outline: 'none',
-                    borderColor: 'rgba(239,125,104,0.72)',
-                    boxShadow: '0 0 0 3px rgba(239,125,104,0.18)',
+                    borderColor: 'rgba(244,184,184,0.72)',
+                    boxShadow: '0 0 0 3px rgba(244,184,184,0.16)',
                   },
                 }}
               >
@@ -147,13 +148,13 @@ export default function GoalsList({ proofState, selectedGoal, onSelectGoal, onRe
               border: '1px solid transparent',
               animation: `fade-rise 420ms cubic-bezier(0.16, 1, 0.3, 1) ${Math.min(idx * 22, 260)}ms both`,
               '&.Mui-selected': {
-                bgcolor: 'rgba(42,157,143,0.14)',
-                borderColor: 'rgba(42,157,143,0.4)',
+                bgcolor: 'rgba(191,232,212,0.1)',
+                borderColor: 'rgba(191,232,212,0.36)',
               },
               '&:hover': {
                 transform: 'translateY(-1px)',
-                bgcolor: 'rgba(244,162,97,0.09)',
-                borderColor: 'rgba(244,162,97,0.28)',
+                bgcolor: COLORS.wash,
+                borderColor: COLORS.lineStrong,
               },
               opacity: goal.is_proven ? 0.62 : 1,
               transition: 'transform 180ms ease, background-color 180ms ease, border-color 180ms ease, opacity 180ms ease',
@@ -161,7 +162,7 @@ export default function GoalsList({ proofState, selectedGoal, onSelectGoal, onRe
           >
             <ListItemIcon sx={{ minWidth: 26 }}>
               {goal.is_proven
-                ? <CheckCircleIcon sx={{ fontSize: 16, color: '#7dd3a7' }} />
+                ? <CheckCircleIcon sx={{ fontSize: 16, color: COLORS.mint }} />
                 : <RadioButtonUncheckedIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
               }
             </ListItemIcon>
@@ -177,7 +178,7 @@ export default function GoalsList({ proofState, selectedGoal, onSelectGoal, onRe
                       fontFamily: '"DM Mono", "JetBrains Mono", monospace',
                       fontSize: '0.77rem',
                       wordBreak: 'break-word',
-                      color: goal.is_proven ? '#7dd3a7' : 'text.primary',
+                      color: goal.is_proven ? COLORS.mint : 'text.primary',
                     }}
                   >
                     {goal.formula}
@@ -190,9 +191,9 @@ export default function GoalsList({ proofState, selectedGoal, onSelectGoal, onRe
                         fontSize: '0.6rem',
                         height: 17,
                         mt: 0.35,
-                        border: '1px solid rgba(125,211,167,0.45)',
-                        color: '#7dd3a7',
-                        bgcolor: 'rgba(125,211,167,0.08)',
+                        border: '1px solid rgba(191,232,212,0.42)',
+                        color: COLORS.mint,
+                        bgcolor: 'rgba(191,232,212,0.08)',
                       }}
                       variant="outlined"
                     />

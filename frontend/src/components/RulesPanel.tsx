@@ -5,6 +5,7 @@ import {
 import GavelIcon from '@mui/icons-material/Gavel';
 import { RuleInfo } from '../types';
 import { RADII } from '../theme/radii';
+import { COLORS } from '../theme/colors';
 
 interface Props {
   rules: RuleInfo[];
@@ -13,11 +14,11 @@ interface Props {
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
-  propositional: '#f4a261',
-  quantifier: '#66c7bc',
-  set_theory: '#e76f51',
-  induction: '#8bd3a8',
-  general: '#a7bbc0',
+  propositional: COLORS.lavender,
+  quantifier: COLORS.mint,
+  set_theory: COLORS.blush,
+  induction: COLORS.butter,
+  general: COLORS.sky,
 };
 
 export default function RulesPanel({ rules, selectedGoal, onApplyRule }: Props) {
@@ -65,7 +66,7 @@ export default function RulesPanel({ rules, selectedGoal, onApplyRule }: Props) 
 
   return (
     <Box sx={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
-      <Box sx={{ px: 1.35, py: 1, borderBottom: '1px solid rgba(183,200,202,0.15)', display: 'flex', alignItems: 'center', gap: 1 }}>
+      <Box sx={{ px: 1.35, py: 1, borderBottom: `1px solid ${COLORS.line}`, display: 'flex', alignItems: 'center', gap: 1 }}>
         <Box
           sx={{
             width: 24,
@@ -73,8 +74,8 @@ export default function RulesPanel({ rules, selectedGoal, onApplyRule }: Props) 
             borderRadius: RADII.icon,
             display: 'grid',
             placeItems: 'center',
-            bgcolor: 'rgba(42,157,143,0.18)',
-            border: '1px solid rgba(42,157,143,0.45)',
+            bgcolor: 'rgba(191,232,212,0.12)',
+            border: '1px solid rgba(191,232,212,0.36)',
           }}
         >
           <GavelIcon sx={{ fontSize: 14, color: 'secondary.main' }} />
@@ -100,9 +101,9 @@ export default function RulesPanel({ rules, selectedGoal, onApplyRule }: Props) 
                 fontSize: '0.6rem',
                 height: 18,
                 mb: 0.6,
-                color: CATEGORY_COLORS[category] || '#a7bbc0',
-                borderColor: `${CATEGORY_COLORS[category] || '#a7bbc0'}88`,
-                backgroundColor: `${CATEGORY_COLORS[category] || '#a7bbc0'}16`,
+                color: CATEGORY_COLORS[category] || COLORS.sky,
+                borderColor: `${CATEGORY_COLORS[category] || COLORS.sky}88`,
+                backgroundColor: `${CATEGORY_COLORS[category] || COLORS.sky}16`,
                 textTransform: 'uppercase',
                 letterSpacing: 0.8,
               }}
@@ -124,13 +125,13 @@ export default function RulesPanel({ rules, selectedGoal, onApplyRule }: Props) 
                       py: 0.62,
                       borderRadius: RADII.control,
                       textTransform: 'none',
-                      borderColor: `${CATEGORY_COLORS[rule.category] || '#a7bbc0'}55`,
-                      color: expandedRule === rule.name ? '#102027' : CATEGORY_COLORS[rule.category] || 'text.primary',
-                      bgcolor: expandedRule === rule.name ? CATEGORY_COLORS[rule.category] || '#a7bbc0' : 'rgba(11,20,24,0.4)',
+                      borderColor: `${CATEGORY_COLORS[rule.category] || COLORS.sky}55`,
+                      color: expandedRule === rule.name ? COLORS.black : CATEGORY_COLORS[rule.category] || 'text.primary',
+                      bgcolor: expandedRule === rule.name ? CATEGORY_COLORS[rule.category] || COLORS.sky : 'rgba(255,255,255,0.035)',
                       animation: `fade-rise 380ms cubic-bezier(0.16, 1, 0.3, 1) ${Math.min(220, (categoryIndex * 90) + (index * 16))}ms both`,
                       '&:hover': {
-                        borderColor: `${CATEGORY_COLORS[rule.category] || '#a7bbc0'}bb`,
-                        bgcolor: expandedRule === rule.name ? CATEGORY_COLORS[rule.category] || '#a7bbc0' : `${CATEGORY_COLORS[rule.category] || '#a7bbc0'}1A`,
+                        borderColor: `${CATEGORY_COLORS[rule.category] || COLORS.sky}bb`,
+                        bgcolor: expandedRule === rule.name ? CATEGORY_COLORS[rule.category] || COLORS.sky : `${CATEGORY_COLORS[rule.category] || COLORS.sky}1A`,
                       },
                     }}
                   >
