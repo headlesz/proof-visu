@@ -4,7 +4,10 @@ Proof state management. Tracks goals, assumptions, proof steps, and history.
 from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import List, Optional, Dict, Any
-from parser.ast_nodes import ASTNode
+from parser.ast_nodes import (
+    ASTNode, And, Or, Implies, Iff, Equals, ElementOf, NotElementOf,
+    Union, Intersect, Complement, Bottom,
+)
 import json
 import copy
 
@@ -242,21 +245,221 @@ class ProofState:
 
     def to_latex(self) -> str:
         """Export proof as LaTeX."""
+        if not self.main_goal or self.main_goal not in self.goals:
+            return "\\begin{proof}\n  No theorem has been set.\n\\end{proof}"
+
         lines = []
-        theorem = str(self.goals[self.main_goal].formula) if self.main_goal else "?"
+        steps_by_goal = self._steps_by_goal()
         lines.append("\\begin{proof}")
-        lines.append(f"  \\textbf{{Theorem:}} ${self.goals[self.main_goal].formula.to_latex() if self.main_goal else '?'}$")
+        lines.append(f"  \\textbf{{Theorem:}} ${self.goals[self.main_goal].formula.to_latex()}$")
         lines.append("")
         if self.premises:
             lines.append("  \\textbf{Premises:}")
+            lines.append("  \\begin{itemize}")
             for p in self.premises:
                 lines.append(f"    \\item ${p.to_latex()}$")
+            lines.append("  \\end{itemize}")
             lines.append("")
-        lines.append("  \\textbf{Proof Steps:}")
+        lines.append("  \\textbf{Proof.}")
         lines.append("  \\begin{enumerate}")
-        for step in self.steps:
-            formula_str = step.result_formula.to_latex() if step.result_formula else "..."
-            lines.append(f"    \\item [{step.rule}] ${formula_str}$ {step.note}")
+        lines.extend(self._render_goal_latex(self.main_goal, steps_by_goal, indent=2, is_root=True))
         lines.append("  \\end{enumerate}")
         lines.append("\\end{proof}")
         return "\n".join(lines)
+
+    def _steps_by_goal(self) -> Dict[str, List[ProofStep]]:
+        steps_by_goal: Dict[str, List[ProofStep]] = {}
+        for step in self.steps:
+            steps_by_goal.setdefault(step.goal_id, []).append(step)
+        return steps_by_goal
+
+    def _render_goal_latex(self, goal_id: str, steps_by_goal: Dict[str, List[ProofStep]],
+                           indent: int, is_root: bool = False) -> List[str]:
+        goal = self.goals[goal_id]
+        prefix = "  " * indent
+        lines = [f"{prefix}\\item {self._goal_intro_sentence(goal, is_root)}"]
+
+        for step in self._local_derivation_steps(goal, steps_by_goal):
+            lines.append(f"{prefix}  {self._local_step_sentence(step)}")
+
+        main_step = self._main_step_for_goal(goal, steps_by_goal)
+        if goal.children_ids:
+            lines.append(f"{prefix}  {self._rule_sentence(goal, main_step)}")
+            lines.append(f"{prefix}  \\begin{{enumerate}}")
+            for child_id in goal.children_ids:
+                lines.extend(self._render_goal_latex(child_id, steps_by_goal, indent + 2))
+            lines.append(f"{prefix}  \\end{{enumerate}}")
+        else:
+            lines.append(f"{prefix}  {self._closure_sentence(goal, main_step)}")
+        return lines
+
+    def _goal_intro_sentence(self, goal: GoalNode, is_root: bool) -> str:
+        if is_root:
+            return f"We prove ${goal.formula.to_latex()}$."
+
+        label = goal.label or ""
+        if label.startswith("Case: "):
+            case_formula = self._case_formula_from_label(goal, label[len("Case: "):])
+            if case_formula:
+                return f"\\textbf{{Case ${case_formula.to_latex()}$:}} Prove ${goal.formula.to_latex()}$."
+            return f"\\textbf{{Case {self._escape_latex_text(label[len('Case: '):])}:}} Prove ${goal.formula.to_latex()}$."
+
+        if label in {"Forward direction", "Backward direction"}:
+            return f"\\textbf{{{label}:}} Prove ${goal.formula.to_latex()}$."
+
+        if label.startswith("Assume ") or label.startswith("Prove "):
+            return f"It remains to prove ${goal.formula.to_latex()}$."
+
+        if label:
+            return f"{self._escape_latex_text(label)}: prove ${goal.formula.to_latex()}$."
+        return f"Prove ${goal.formula.to_latex()}$."
+
+    def _case_formula_from_label(self, goal: GoalNode, case_text: str) -> Optional[ASTNode]:
+        for assumption in goal.assumptions:
+            if str(assumption) == case_text:
+                return assumption
+        return None
+
+    def _local_derivation_steps(self, goal: GoalNode,
+                                steps_by_goal: Dict[str, List[ProofStep]]) -> List[ProofStep]:
+        local_steps: List[ProofStep] = []
+        for step in steps_by_goal.get(goal.id, []):
+            if step.new_goal_ids:
+                continue
+            if step.rule == goal.rule_applied:
+                continue
+            local_steps.append(step)
+        return local_steps
+
+    def _main_step_for_goal(self, goal: GoalNode,
+                            steps_by_goal: Dict[str, List[ProofStep]]) -> Optional[ProofStep]:
+        for step in reversed(steps_by_goal.get(goal.id, [])):
+            if step.rule == goal.rule_applied:
+                return step
+        return None
+
+    def _rule_sentence(self, goal: GoalNode, step: Optional[ProofStep]) -> str:
+        rule = goal.rule_applied or ""
+        f = goal.formula
+
+        if rule == "iff_intro" and isinstance(f, Iff):
+            return (
+                "By biconditional introduction, it suffices to prove both "
+                f"${Implies(f.left, f.right).to_latex()}$ and ${Implies(f.right, f.left).to_latex()}$."
+            )
+        if rule == "implies_intro" and isinstance(f, Implies):
+            return f"Assume ${f.left.to_latex()}$; it remains to prove ${f.right.to_latex()}$."
+        if rule == "and_intro" and isinstance(f, And):
+            return f"By conjunction introduction, prove ${f.left.to_latex()}$ and ${f.right.to_latex()}$."
+        if rule == "or_intro_left" and isinstance(f, Or):
+            return f"By left disjunction introduction, it suffices to prove ${f.left.to_latex()}$."
+        if rule == "or_intro_right" and isinstance(f, Or):
+            return f"By right disjunction introduction, it suffices to prove ${f.right.to_latex()}$."
+        if rule == "or_elim":
+            source = self._first_assumption(goal, Or)
+            source_text = f" on ${source.to_latex()}$" if source else ""
+            return f"By disjunction elimination{source_text}, prove the goal in each case."
+        if rule == "classical_cases":
+            case_formula = self._case_formula_from_step(step)
+            if case_formula:
+                return f"By excluded middle, split into the cases ${case_formula.to_latex()}$ and its negation."
+            return "By excluded middle, split into complementary cases."
+        if rule == "equality_intro" and isinstance(f, Equals):
+            return f"By extensionality, prove ${f.left.to_latex()} \\subseteq {f.right.to_latex()}$ and ${f.right.to_latex()} \\subseteq {f.left.to_latex()}$."
+        if rule == "subset_intro":
+            return "By subset introduction, take an arbitrary element of the left side and prove it belongs to the right side."
+        if rule == "intersect_intro" and isinstance(f, ElementOf) and isinstance(f.set_expr, Intersect):
+            return f"By intersection introduction, prove ${f.element.to_latex()} \\in {f.set_expr.left.to_latex()}$ and ${f.element.to_latex()} \\in {f.set_expr.right.to_latex()}$."
+        if rule == "union_intro_left" and isinstance(f, ElementOf) and isinstance(f.set_expr, Union):
+            return f"By left union introduction, it suffices to prove ${f.element.to_latex()} \\in {f.set_expr.left.to_latex()}$."
+        if rule == "union_intro_right" and isinstance(f, ElementOf) and isinstance(f.set_expr, Union):
+            return f"By right union introduction, it suffices to prove ${f.element.to_latex()} \\in {f.set_expr.right.to_latex()}$."
+        if rule == "union_elim":
+            source = self._first_union_membership(goal)
+            source_text = f" on ${source.to_latex()}$" if source else ""
+            return f"By union elimination{source_text}, prove the goal in each case."
+        if rule == "complement_intro" and isinstance(f, ElementOf) and isinstance(f.set_expr, Complement):
+            return f"By the definition of complement, it suffices to prove ${NotElementOf(f.element, f.set_expr.operand).to_latex()}$."
+        if rule == "not_complement_intro" and isinstance(f, NotElementOf) and isinstance(f.set_expr, Complement):
+            return f"By the definition of complement, it suffices to prove ${ElementOf(f.element, f.set_expr.operand).to_latex()}$."
+        if rule == "not_element_intro" and isinstance(f, NotElementOf):
+            return f"To prove nonmembership, assume ${ElementOf(f.element, f.set_expr).to_latex()}$ and derive a contradiction."
+        if rule == "not_intro":
+            return "To prove the negation, assume the positive statement and derive a contradiction."
+        if step:
+            return f"Apply {self._rule_label(step.rule)}."
+        return "It remains to prove the following subgoals."
+
+    def _closure_sentence(self, goal: GoalNode, step: Optional[ProofStep]) -> str:
+        rule = goal.rule_applied or ""
+        formula = goal.formula.to_latex()
+        if rule == "assumption":
+            return f"This is one of the assumptions, so ${formula}$ follows."
+        if rule == "contradiction":
+            return f"The assumptions are contradictory, so ${formula}$ follows."
+        if rule == "emptyset_elim":
+            return f"An element of the empty set is assumed, so ${formula}$ follows."
+        if rule == "not_elim":
+            return f"By double-negation elimination, ${formula}$ follows."
+        if rule in {"and_elim_left", "and_elim_right", "intersect_elim", "complement_elim",
+                    "not_complement_elim", "implies_elim"}:
+            return f"By {self._rule_label(rule)}, derive ${formula}$."
+        if step:
+            return f"By {self._rule_label(step.rule)}, ${formula}$ follows."
+        return f"Thus ${formula}$ is proven."
+
+    def _local_step_sentence(self, step: ProofStep) -> str:
+        formula = step.result_formula.to_latex() if step.result_formula else "\\ldots"
+        if step.rule == "implies_elim":
+            return f"By modus ponens, derive ${formula}$."
+        if step.rule in {"and_elim_left", "and_elim_right"}:
+            return f"By conjunction elimination, derive ${formula}$."
+        if step.rule == "intersect_elim":
+            return f"By intersection elimination, add the component memberships from ${formula}$."
+        if step.rule == "complement_elim":
+            return f"By complement elimination, derive ${formula}$."
+        if step.rule == "not_complement_elim":
+            return f"By complement nonmembership elimination, derive ${formula}$."
+        return f"By {self._rule_label(step.rule)}, derive ${formula}$."
+
+    def _case_formula_from_step(self, step: Optional[ProofStep]) -> Optional[ASTNode]:
+        if not step:
+            return None
+        formula = step.params.get("formula") or step.params.get("case_formula")
+        if not formula:
+            return None
+        for gid in step.new_goal_ids:
+            goal = self.goals.get(gid)
+            if not goal:
+                continue
+            for assumption in goal.assumptions:
+                if str(assumption) == str(formula):
+                    return assumption
+        return None
+
+    def _first_assumption(self, goal: GoalNode, cls):
+        for assumption in goal.assumptions:
+            if isinstance(assumption, cls):
+                return assumption
+        return None
+
+    def _first_union_membership(self, goal: GoalNode) -> Optional[ElementOf]:
+        for assumption in goal.assumptions:
+            if isinstance(assumption, ElementOf) and isinstance(assumption.set_expr, Union):
+                return assumption
+        return None
+
+    def _rule_label(self, rule: str) -> str:
+        return self._escape_latex_text(rule.replace("_", " "))
+
+    def _escape_latex_text(self, text: str) -> str:
+        return (
+            text.replace("\\", "\\textbackslash{}")
+                .replace("&", "\\&")
+                .replace("%", "\\%")
+                .replace("$", "\\$")
+                .replace("#", "\\#")
+                .replace("_", "\\_")
+                .replace("{", "\\{")
+                .replace("}", "\\}")
+        )

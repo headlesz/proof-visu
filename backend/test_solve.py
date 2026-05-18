@@ -37,6 +37,19 @@ for name, formula in tests:
 signal.alarm(0)
 print("All tests done.")
 
+e_latex = ProofEngine()
+e_latex.set_goal("p -> q <-> ~p or q")
+r_latex = e_latex.solve(200)
+assert r_latex["is_complete"], "latex regression theorem should solve"
+latex = e_latex.export_latex()
+assert "By biconditional introduction, it suffices to prove both" in latex
+assert "By excluded middle, split into the cases $p$ and its negation." in latex
+assert "By modus ponens, derive $q$." in latex
+assert "By disjunction elimination on $(\\neg p \\lor q)$, prove the goal in each case." in latex
+assert latex.find("\\textbf{Forward direction:}") < latex.find("\\textbf{Backward direction:}")
+assert "\\begin<class" not in latex
+print("latex_export [OK] structured biconditional proof export")
+
 # UI regression: if user manually takes a bad branch mid-proof, solve() should
 # still recover by re-solving from the theorem.
 e = ProofEngine()
