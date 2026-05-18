@@ -122,7 +122,13 @@ build_backend() {
 
 build_frontend() {
     log "Installing npm dependencies…"
-    (cd "${FRONTEND_DIR}" && npm ci --no-audit --no-fund)
+    # Prefer `npm ci` (fast, reproducible). Fall back to `npm install` if the
+    # lockfile is out of sync with package.json — common after dependency
+    # bumps where the lockfile wasn't regenerated.
+    if ! (cd "${FRONTEND_DIR}" && npm ci --no-audit --no-fund); then
+        warn "npm ci failed (likely lockfile drift). Falling back to npm install…"
+        (cd "${FRONTEND_DIR}" && npm install --no-audit --no-fund)
+    fi
     log "Building production bundle…"
     (cd "${FRONTEND_DIR}" && npm run build)
     [[ -d "${BUILD_DIR}" ]] || fatal "Build directory ${BUILD_DIR} was not produced."
