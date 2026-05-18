@@ -1,0 +1,308 @@
+#!/usr/bin/env bash
+# =============================================================================
+# Proof Visualizer — one-shot deploy script
+#
+# What it does:
+#   1. Installs OS-level prerequisites (Python 3, Node 18, nginx).
+#   2. Creates a Python venv and installs backend requirements + gunicorn.
+#   3. Installs frontend npm dependencies and produces a production build.
+#   4. Generates an nginx site config that reverse-proxies:
+#        /         -> static files from frontend/build/
+#        /api/     -> gunicorn on 127.0.0.1:5001
+#   5. Optionally installs a systemd unit so the Flask backend runs as a
+#      managed service.
+#
+# Usage:
+#   sudo APP_DOMAIN=proofs.example.com ./deploy.sh
+#   sudo ./deploy.sh                 # uses APP_DOMAIN=_ (catch-all)
+#   ./deploy.sh --no-system          # skip apt/systemd/nginx-reload steps;
+#                                    # only build the project locally
+#
+# Tested on:  Ubuntu 22.04 / Debian 12.  macOS path is best-effort for local
+#             testing (Homebrew nginx, no systemd).
+# =============================================================================
+
+set -euo pipefail
+
+# ---------- configuration -----------------------------------------------------
+
+APP_NAME="proof-visualizer"
+APP_DOMAIN="${APP_DOMAIN:-_}"           # "_" = nginx default-server (any host)
+BACKEND_PORT="${BACKEND_PORT:-5001}"
+GUNICORN_WORKERS="${GUNICORN_WORKERS:-2}"
+
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BACKEND_DIR="${PROJECT_ROOT}/backend"
+FRONTEND_DIR="${PROJECT_ROOT}/frontend"
+VENV_DIR="${BACKEND_DIR}/venv"
+BUILD_DIR="${FRONTEND_DIR}/build"
+
+NGINX_CONF_OUT="${PROJECT_ROOT}/deploy/nginx.${APP_NAME}.conf"
+SYSTEMD_UNIT_OUT="${PROJECT_ROOT}/deploy/${APP_NAME}.service"
+
+DO_SYSTEM=1
+for arg in "$@"; do
+    case "$arg" in
+        --no-system)  DO_SYSTEM=0 ;;
+        -h|--help)
+            sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'
+            exit 0
+            ;;
+    esac
+done
+
+# ---------- helpers -----------------------------------------------------------
+
+log()   { printf '\033[1;36m[deploy]\033[0m %s\n' "$*"; }
+warn()  { printf '\033[1;33m[deploy]\033[0m %s\n' "$*" >&2; }
+fatal() { printf '\033[1;31m[deploy]\033[0m %s\n' "$*" >&2; exit 1; }
+
+require_root_for_system() {
+    if [[ ${DO_SYSTEM} -eq 1 && ${EUID} -ne 0 ]]; then
+        fatal "System install steps require root. Re-run with sudo, or pass --no-system."
+    fi
+}
+
+detect_os() {
+    case "$(uname -s)" in
+        Linux*)  echo linux ;;
+        Darwin*) echo macos ;;
+        *)       echo unknown ;;
+    esac
+}
+
+# ---------- step 1: OS dependencies ------------------------------------------
+
+install_system_deps() {
+    [[ ${DO_SYSTEM} -eq 0 ]] && { log "Skipping system deps (--no-system)."; return; }
+
+    local os
+    os="$(detect_os)"
+    log "Installing system deps for ${os}…"
+
+    if [[ "${os}" == "linux" ]]; then
+        export DEBIAN_FRONTEND=noninteractive
+        apt-get update -y
+        apt-get install -y \
+            python3 python3-venv python3-pip \
+            curl ca-certificates gnupg \
+            nginx
+        # Node 18 via NodeSource if not already present at >=18
+        if ! command -v node >/dev/null 2>&1 || \
+           [[ "$(node -v 2>/dev/null | sed 's/^v\([0-9]*\).*/\1/')" -lt 18 ]]; then
+            log "Installing Node.js 18 via NodeSource…"
+            curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
+            apt-get install -y nodejs
+        fi
+    elif [[ "${os}" == "macos" ]]; then
+        if ! command -v brew >/dev/null 2>&1; then
+            fatal "Homebrew not found. Install brew or rerun with --no-system."
+        fi
+        brew install python@3.11 node@18 nginx || true
+    else
+        warn "Unknown OS; skipping system deps."
+    fi
+}
+
+# ---------- step 2: backend ---------------------------------------------------
+
+build_backend() {
+    log "Setting up Python venv at ${VENV_DIR}…"
+    python3 -m venv "${VENV_DIR}"
+    # shellcheck disable=SC1091
+    source "${VENV_DIR}/bin/activate"
+    pip install --upgrade pip wheel
+    pip install -r "${BACKEND_DIR}/requirements.txt"
+    pip install gunicorn
+    deactivate
+    log "Backend dependencies installed."
+}
+
+# ---------- step 3: frontend --------------------------------------------------
+
+build_frontend() {
+    log "Installing npm dependencies…"
+    (cd "${FRONTEND_DIR}" && npm ci --no-audit --no-fund)
+    log "Building production bundle…"
+    (cd "${FRONTEND_DIR}" && npm run build)
+    [[ -d "${BUILD_DIR}" ]] || fatal "Build directory ${BUILD_DIR} was not produced."
+    log "Frontend built at ${BUILD_DIR}."
+}
+
+# ---------- step 4: nginx reverse proxy --------------------------------------
+
+write_nginx_conf() {
+    mkdir -p "$(dirname "${NGINX_CONF_OUT}")"
+    log "Writing nginx config to ${NGINX_CONF_OUT}…"
+
+    cat > "${NGINX_CONF_OUT}" <<EOF
+# Auto-generated by deploy.sh — Proof Visualizer reverse proxy.
+# Static React build is served directly; /api/* is forwarded to gunicorn.
+
+upstream ${APP_NAME}_backend {
+    server 127.0.0.1:${BACKEND_PORT};
+    keepalive 16;
+}
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name ${APP_DOMAIN};
+
+    # ---- security & sizing ----------------------------------------------
+    client_max_body_size 1m;
+    server_tokens off;
+    add_header X-Content-Type-Options nosniff always;
+    add_header X-Frame-Options SAMEORIGIN always;
+    add_header Referrer-Policy strict-origin-when-cross-origin always;
+
+    # ---- gzip -----------------------------------------------------------
+    gzip on;
+    gzip_types text/plain text/css application/json application/javascript
+               application/xml text/xml application/wasm image/svg+xml;
+    gzip_min_length 1024;
+
+    # ---- static frontend -----------------------------------------------
+    root ${BUILD_DIR};
+    index index.html;
+
+    # Long-cache fingerprinted CRA assets.
+    location /static/ {
+        access_log off;
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+        try_files \$uri =404;
+    }
+
+    # ---- API reverse proxy ---------------------------------------------
+    location /api/ {
+        proxy_pass         http://${APP_NAME}_backend;
+        proxy_http_version 1.1;
+        proxy_set_header   Host              \$host;
+        proxy_set_header   X-Real-IP         \$remote_addr;
+        proxy_set_header   X-Forwarded-For   \$proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto \$scheme;
+        proxy_set_header   Connection        "";
+        proxy_read_timeout 60s;
+        proxy_send_timeout 60s;
+    }
+
+    # ---- SPA fallback ---------------------------------------------------
+    # Anything else falls back to index.html so client-side routing works.
+    location / {
+        try_files \$uri \$uri/ /index.html;
+    }
+}
+EOF
+    log "Nginx config written."
+}
+
+install_nginx_site() {
+    [[ ${DO_SYSTEM} -eq 0 ]] && { log "Skipping nginx install (--no-system)."; return; }
+    [[ "$(detect_os)" != "linux" ]] && { warn "Nginx auto-install only supported on Linux."; return; }
+
+    local target="/etc/nginx/sites-available/${APP_NAME}.conf"
+    local link="/etc/nginx/sites-enabled/${APP_NAME}.conf"
+
+    log "Installing nginx site to ${target}…"
+    install -m 0644 "${NGINX_CONF_OUT}" "${target}"
+    ln -sf "${target}" "${link}"
+
+    # Disable the stock default site if it's still around and we're catch-all.
+    if [[ "${APP_DOMAIN}" == "_" && -e /etc/nginx/sites-enabled/default ]]; then
+        rm -f /etc/nginx/sites-enabled/default
+    fi
+
+    log "Testing nginx config…"
+    nginx -t
+    log "Reloading nginx…"
+    systemctl reload nginx || systemctl restart nginx
+}
+
+# ---------- step 5: systemd unit for the backend -----------------------------
+
+write_systemd_unit() {
+    mkdir -p "$(dirname "${SYSTEMD_UNIT_OUT}")"
+    log "Writing systemd unit to ${SYSTEMD_UNIT_OUT}…"
+
+    local run_user="${SUDO_USER:-${USER}}"
+
+    cat > "${SYSTEMD_UNIT_OUT}" <<EOF
+# Auto-generated by deploy.sh — gunicorn service for the Flask backend.
+[Unit]
+Description=Proof Visualizer Flask backend (gunicorn)
+After=network.target
+
+[Service]
+Type=simple
+User=${run_user}
+WorkingDirectory=${BACKEND_DIR}
+Environment=PORT=${BACKEND_PORT}
+Environment=PYTHONUNBUFFERED=1
+ExecStart=${VENV_DIR}/bin/gunicorn \\
+    --workers ${GUNICORN_WORKERS} \\
+    --bind 127.0.0.1:${BACKEND_PORT} \\
+    --access-logfile - \\
+    --error-logfile  - \\
+    app:app
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    log "Systemd unit written."
+}
+
+install_systemd_unit() {
+    [[ ${DO_SYSTEM} -eq 0 ]] && { log "Skipping systemd install (--no-system)."; return; }
+    [[ "$(detect_os)" != "linux" ]] && { warn "Systemd install only supported on Linux."; return; }
+
+    local target="/etc/systemd/system/${APP_NAME}.service"
+    log "Installing systemd unit to ${target}…"
+    install -m 0644 "${SYSTEMD_UNIT_OUT}" "${target}"
+    systemctl daemon-reload
+    systemctl enable "${APP_NAME}.service"
+    systemctl restart "${APP_NAME}.service"
+    log "Backend service started. Status:"
+    systemctl --no-pager --full status "${APP_NAME}.service" || true
+}
+
+# ---------- main --------------------------------------------------------------
+
+main() {
+    log "Project root: ${PROJECT_ROOT}"
+    log "Domain:       ${APP_DOMAIN}"
+    log "Backend port: ${BACKEND_PORT}"
+    log "System mode:  $([[ ${DO_SYSTEM} -eq 1 ]] && echo on || echo off)"
+
+    require_root_for_system
+    install_system_deps
+    build_backend
+    build_frontend
+    write_nginx_conf
+    write_systemd_unit
+    install_nginx_site
+    install_systemd_unit
+
+    log "Done."
+    if [[ ${DO_SYSTEM} -eq 0 ]]; then
+        cat <<EOF
+
+[next steps] You ran with --no-system. To finish manually:
+
+  sudo cp ${NGINX_CONF_OUT} /etc/nginx/sites-available/${APP_NAME}.conf
+  sudo ln -sf /etc/nginx/sites-available/${APP_NAME}.conf /etc/nginx/sites-enabled/
+  sudo nginx -t && sudo systemctl reload nginx
+
+  sudo cp ${SYSTEMD_UNIT_OUT} /etc/systemd/system/${APP_NAME}.service
+  sudo systemctl daemon-reload
+  sudo systemctl enable --now ${APP_NAME}.service
+
+EOF
+    else
+        log "Visit http://${APP_DOMAIN}/  (or your server's IP) to verify."
+    fi
+}
+
+main "$@"

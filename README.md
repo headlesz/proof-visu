@@ -84,6 +84,74 @@ Both processes must be stopped independently.
 6. Use "Hint" for automated suggestions
 7. Export your completed proof
 
+## Production Deployment
+
+A turnkey `deploy.sh` script is included at the repo root. It provisions a
+single Linux host (tested on Ubuntu 22.04 / Debian 12) end-to-end:
+
+1. Installs OS-level prerequisites — Python 3 + venv, Node.js 18 (via
+   NodeSource), and nginx.
+2. Creates `backend/venv`, installs `backend/requirements.txt`, and adds
+   `gunicorn` as the production WSGI server.
+3. Runs `npm ci` and `npm run build` in `frontend/`, producing a static
+   bundle at `frontend/build/`.
+4. Generates `deploy/nginx.proof-visualizer.conf` — an nginx reverse proxy
+   that serves the React build from `/` and forwards `/api/*` to gunicorn
+   on `127.0.0.1:5001`. Includes gzip, long-cache for `/static/`, basic
+   security headers, and a SPA fallback to `index.html`.
+5. Generates `deploy/proof-visualizer.service` — a systemd unit that runs
+   `gunicorn app:app` against the Flask backend.
+6. On Linux with sudo, installs the nginx site to
+   `/etc/nginx/sites-available/`, symlinks it into `sites-enabled/`,
+   reloads nginx, and starts the systemd service.
+
+### Usage
+
+```bash
+# Full deploy with a real hostname
+sudo APP_DOMAIN=proofs.example.com ./deploy.sh
+
+# Catch-all (any Host header) — useful for raw-IP access
+sudo ./deploy.sh
+
+# Build only (no apt / systemd / nginx mutations); safe locally
+./deploy.sh --no-system
+```
+
+### Configuration
+
+Override via environment variables before invoking the script:
+
+| Variable           | Default | Purpose                                |
+|--------------------|---------|----------------------------------------|
+| `APP_DOMAIN`       | `_`     | nginx `server_name`                    |
+| `BACKEND_PORT`     | `5001`  | Port gunicorn binds on `127.0.0.1`     |
+| `GUNICORN_WORKERS` | `2`     | Number of gunicorn worker processes    |
+
+### Reverse proxy layout
+
+```
+                 ┌──────────────────────────────┐
+  Browser  ──►   │  nginx  (port 80)            │
+                 │   /         → frontend/build │
+                 │   /api/*    → 127.0.0.1:5001 │
+                 └──────────────┬───────────────┘
+                                │
+                                ▼
+                 ┌──────────────────────────────┐
+                 │  gunicorn  (systemd)         │
+                 │   app:app  (Flask backend)   │
+                 └──────────────────────────────┘
+```
+
+### Heads-up about session state
+
+The Flask backend keeps per-session proof state in an in-memory dictionary
+(`backend/app.py`, `engines = {}`). With `GUNICORN_WORKERS > 1`, two
+requests for the same session may land on different workers and see
+divergent state. For now keep `GUNICORN_WORKERS=1`, or refactor the
+session store to something shared (e.g. Redis) before scaling up.
+
 ## Project Structure
 
 ```
@@ -100,6 +168,9 @@ proof-visualizer/
 │   │   ├── services/       # API services
 │   │   └── App.tsx
 │   └── package.json
+├── deploy/                 # Generated nginx + systemd configs (created by deploy.sh)
+├── deploy.sh               # One-shot production deploy script
+├── TechBreakdown.md        # Algorithm-level technical writeup
 └── README.md
 ```
 
